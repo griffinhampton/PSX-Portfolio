@@ -17,9 +17,15 @@ export function isMobileDevice() {
     return isMobileUA || (hasTouch && isSmallScreen);
 }
 
+// Check if device is in landscape mode
+export function isLandscapeMode() {
+    return window.innerWidth > window.innerHeight;
+}
+
 // Quality settings based on device
 export function getQualitySettings() {
     const isMobile = isMobileDevice();
+    const isLandscape = isLandscapeMode();
     
     if (isMobile) {
         return {
@@ -27,15 +33,17 @@ export function getQualitySettings() {
             particleCount: 5000,
             shadowMapSize: 512,
             enablePostProcessing: true,  // Enable for mobile
-            pixelSize: 3,  // Larger pixels = better performance (desktop uses 3)
-            renderScale: 0.75,  // Render at 75% resolution then upscale
+            pixelSize: 3,  // Same as desktop for consistent look
+            renderScale: isLandscape ? 1.0 : 0.75,  // Full res in landscape, 75% in portrait
             enableFlashlight: false,
             enableDynamicEffects: false,
             enablePositionTracker: false,
             antialias: false,
             maxLights: 2,
             shadowsEnabled: false,
-            fogEnabled: true
+            fogEnabled: true,
+            orbSize: 0.3,  // Larger orbs for easier touch interaction
+            orbRaycastThreshold: 0.5  // Larger hit area for touch
         };
     } else {
         return {
@@ -51,7 +59,9 @@ export function getQualitySettings() {
             antialias: true,
             maxLights: 5,
             shadowsEnabled: true,
-            fogEnabled: true
+            fogEnabled: true,
+            orbSize: 0.2,  // Standard orb size
+            orbRaycastThreshold: 0.3  // Standard hit area
         };
     }
 }

@@ -83,9 +83,10 @@ export function setupCameraControls(camera, domElement) {
  * @param {HTMLElement} domElement 
  * @param {Array<Array<number>>} positions - Array of [x,y,z] positions for navigation
  * @param {THREE.SpotLight} flashlight - The flashlight to control (optional)
+ * @param {Object} qualitySettings - Quality settings for orb sizing (optional)
  * @returns {Object} orbManager with update() method
  */
-export function setupOrbNavigation(scene, camera, domElement, positions = [], flashlight = null) {
+export function setupOrbNavigation(scene, camera, domElement, positions = [], flashlight = null, qualitySettings = {}) {
     console.log('Setting up orb navigation with', positions.length, 'positions');
     console.log('Camera starting position:', camera.position);
     
@@ -98,12 +99,16 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
 
     // Track which position index we're currently at/closest to
     let currentIndex = 0;
+    
+    // Get orb size from quality settings (larger on mobile)
+    const orbSize = qualitySettings.orbSize || 0.2;
+    const raycastThreshold = qualitySettings.orbRaycastThreshold || 0.3;
 
     /**
      * Create an orb mesh
      */
     function createOrbMesh(pos, idx) {
-        const geom = new THREE.SphereGeometry(0.15, 12, 12);
+        const geom = new THREE.SphereGeometry(orbSize, 12, 12);
         const mat = new THREE.MeshStandardMaterial({
             color: 0x00ffff,
             emissive: 0x0088ff,
@@ -195,25 +200,58 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
         pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
         raycaster.setFromCamera(pointer, camera);
+        // Increase threshold for better hit detection on mobile
+        raycaster.params.Points.threshold = raycastThreshold;
         const intersects = raycaster.intersectObjects(group.children, false);
         
-        // Change cursor based on hover state
-        if (intersects.length > 0) {
-            domElement.style.cursor = 'pointer';
-        } else {
-            domElement.style.cursor = 'default';
+        // Change cursor based on hover state (only on desktop)
+        if (!qualitySettings.isMobile) {
+            if (intersects.length > 0) {
+                domElement.style.cursor = 'pointer';
+            } else {
+                domElement.style.cursor = 'default';
+            }
         }
     }
 
     /**
-     * Handle pointer click
+     * Get pointer position from event (works for both mouse and touch)
+     */
+    function getPointerPosition(event) {
+        const rect = domElement.getBoundingClientRect();
+        let clientX, clientY;
+        
+        if (event.touches && event.touches.length > 0) {
+            // Touch event
+            clientX = event.touches[0].clientX;
+            clientY = event.touches[0].clientY;
+        } else if (event.changedTouches && event.changedTouches.length > 0) {
+            // Touch end event
+            clientX = event.changedTouches[0].clientX;
+            clientY = event.changedTouches[0].clientY;
+        } else {
+            // Mouse event
+            clientX = event.clientX;
+            clientY = event.clientY;
+        }
+        
+        return {
+            x: ((clientX - rect.left) / rect.width) * 2 - 1,
+            y: -((clientY - rect.top) / rect.height) * 2 + 1
+        };
+    }
+
+    /**
+     * Handle pointer click or touch
      */
     function onPointerDown(event) {
-        const rect = domElement.getBoundingClientRect();
-        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        const pos = getPointerPosition(event);
+        pointer.x = pos.x;
+        pointer.y = pos.y;
 
         raycaster.setFromCamera(pointer, camera);
+        // Increase threshold for better hit detection on mobile
+        raycaster.params.Points.threshold = raycastThreshold;
         const intersects = raycaster.intersectObjects(group.children, false);
         
         if (intersects.length > 0) {
@@ -255,6 +293,10 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
 
     domElement.addEventListener('pointermove', onPointerMoveOrb);
     domElement.addEventListener('pointerdown', onPointerDown);
+    
+    // Add touch event listeners for mobile support
+    domElement.addEventListener('touchstart', onPointerDown, { passive: false });
+    domElement.addEventListener('touchend', onPointerDown, { passive: false });
 
     // Initialize with visible orbs
     updateVisibleOrbs();
@@ -271,7 +313,10 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
             return currentIndex === positions.length - 1;
         },
         dispose() {
+            domElement.removeEventListener('pointermove', onPointerMoveOrb);
             domElement.removeEventListener('pointerdown', onPointerDown);
+            domElement.removeEventListener('touchstart', onPointerDown);
+            domElement.removeEventListener('touchend', onPointerDown);
             group.children.forEach(child => {
                 gsap.killTweensOf(child.scale);
             });

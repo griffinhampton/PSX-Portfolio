@@ -74,7 +74,7 @@ setupResizeHandler(camera, renderer, composer, pixelationPass, qualitySettings);
 // Set up orb navigation system (after lights are added so orbs are visible)
 let orbManager;
 try {
-    orbManager = setupOrbNavigation(scene, camera, renderer.domElement, navigationPositions, flashlight);
+    orbManager = setupOrbNavigation(scene, camera, renderer.domElement, navigationPositions, flashlight, qualitySettings);
     console.log('Orb manager initialized successfully');
 } catch (error) {
     console.error('Error setting up orb navigation:', error);
