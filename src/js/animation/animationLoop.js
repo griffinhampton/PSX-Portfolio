@@ -12,6 +12,7 @@ import { updateParticles } from "../particles/particles.js";
  * @param {Array} params.particleArrays - Array of particle system objects for snow effect
  * @param {Object} params.models - The loaded models object
  * @param {Function} params.updatePositionInfo - Function to update position info display
+ * @param {Object} params.interactiveManager - Manager for interactive clickable objects
  */
 export function createAnimationLoop({
     renderer,
@@ -22,7 +23,9 @@ export function createAnimationLoop({
     particleArrays,
     models,
     updatePositionInfo,
-    orbManager
+    orbManager,
+    getInteractiveManager,
+    youtubeScreen
 }) {
     const { flashlight, raycaster, mouse } = lights;
 
@@ -71,11 +74,23 @@ export function createAnimationLoop({
             orbManager.update();
         }
         
+        // Update interactive objects (rotation animations)
+        const interactiveManager = getInteractiveManager ? getInteractiveManager() : null;
+        if (interactiveManager && typeof interactiveManager.update === 'function') {
+            interactiveManager.update();
+        }
+        
         // Render using composer for post-processing, or fallback to renderer
         if (composer) {
             composer.render();
         } else {
             renderer.render(window.scene, window.camera);
+        }
+        
+        // Render CSS3D for YouTube screen
+        const ytScreen = youtubeScreen ? youtubeScreen() : null;
+        if (ytScreen) {
+            ytScreen.render(window.camera);
         }
     }
 

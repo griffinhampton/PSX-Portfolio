@@ -30,10 +30,10 @@ export function getQualitySettings() {
     if (isMobile) {
         return {
             isMobile: true,
-            particleCount: 5000,
+            particleCount: 2000,
             shadowMapSize: 512,
             enablePostProcessing: true,  // Enable for mobile
-            pixelSize: 2, 
+            pixelSize: 1.75, 
             renderScale: isLandscape ? 1.0 : 0.8,  // Full res in landscape, 80% in portrait
             enableFlashlight: false,
             enableDynamicEffects: true,
@@ -48,7 +48,7 @@ export function getQualitySettings() {
     } else {
         return {
             isMobile: false,
-            particleCount: 5000,
+            particleCount: 2000,
             shadowMapSize: 1024,
             enablePostProcessing: true,
             pixelSize: 3,  // Smaller pixels for sharper look
@@ -56,9 +56,9 @@ export function getQualitySettings() {
             enableFlashlight: true,
             enableDynamicEffects: true,
             enablePositionTracker: true,
-            antialias: true,
+            antialias: false,
             maxLights: 5,
-            shadowsEnabled: true,
+            shadowsEnabled: false,
             fogEnabled: true,
             orbSize: 0.2,  // Standard orb size
             orbRaycastThreshold: 0.3  // Standard hit area

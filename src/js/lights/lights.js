@@ -59,7 +59,7 @@ export function setupLights(scene, camera, qualitySettings) {
     scene.add(lights.hemiLight);
 
     // Warm cabin light - main focal point near the cabin at 0,0,0
-    lights.cabinLight = new THREE.PointLight(0xffab3f, 25, 15);
+    lights.cabinLight = new THREE.PointLight(0xffffff, 25, 15);
     lights.cabinLight.position.set(2, 1, 0);
     if (qualitySettings.shadowsEnabled) {
         lights.cabinLight.castShadow = true;
@@ -78,12 +78,13 @@ export function setupLights(scene, camera, qualitySettings) {
             lights.cabinLight2.shadow.mapSize.height = qualitySettings.shadowMapSize;
         }
         scene.add(lights.cabinLight2);
-
-        // Strong center point light (interior/close lighting)
-        lights.centerLight = new THREE.PointLight(0xffffff, 10, 5);
-        lights.centerLight.position.set(0, 1, 1);
-        scene.add(lights.centerLight);
     }
+
+    // Center point light at last navigation position (interior lighting)
+    // Available on both mobile and desktop
+    lights.centerLight = new THREE.PointLight(0xffffff, 1, 5);
+    lights.centerLight.position.set(3.13, 0.8, 0.04); // Last navigation position
+    scene.add(lights.centerLight);
 
     // Reduced directional light for subtle depth
     lights.directionalLight = new THREE.DirectionalLight(0xaaccff, 0.5);
@@ -111,8 +112,8 @@ export function setupLights(scene, camera, qualitySettings) {
         lights.mouse = new THREE.Vector2();
     }
 
-    // Light sphere - only add if centerLight exists (desktop only)
-    if (!qualitySettings.isMobile && lights.centerLight) {
+    // Light sphere helper (attached to center light)
+    if (lights.centerLight) {
         const lightSphereGeo = new THREE.SphereGeometry(0.05, 16, 16);
         const lightSphereMat = new THREE.MeshBasicMaterial({
             color: 0xff0000,

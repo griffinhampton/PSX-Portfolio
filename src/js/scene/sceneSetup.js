@@ -29,7 +29,6 @@ export function setupScene(qualitySettings) {
     const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
     // Start at first navigation point
     camera.position.set(-1.73, 1.2, 38);
-    console.log('Camera initialized at:', camera.position);
 
     // Set up scene
     const scene = new THREE.Scene();

@@ -16,7 +16,45 @@
 		</script>
   </head>
   <body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+      <div class="navbar-menu">
+        <button class="nav-button" id="navBackToStart" data-nav="start">
+          <span class="nav-icon">↺</span>
+          <span class="nav-text">RESET</span>
+        </button>
+        <button class="nav-button" id="navToCabin" data-nav="cabin">
+          <span class="nav-icon">⌂</span>
+          <span class="nav-text">CABIN</span>
+        </button>
+        <button class="nav-button" id="navAbout" data-nav="about">
+          <span class="nav-icon">i</span>
+          <span class="nav-text">ABOUT</span>
+        </button>
+        <button class="nav-button" id="navProjects" data-nav="projects">
+          <span class="nav-icon">▣</span>
+          <span class="nav-text">PROJECTS</span>
+        </button>
+        <button class="nav-button" id="navContact" data-nav="contact">
+          <span class="nav-icon">✉</span>
+          <span class="nav-text">CONTACT</span>
+        </button>
+      </div>
+    </nav>
+
     <div id="positionInfo">Hover over objects to see position</div>
+    <button id="muteButton" class="mute-button" aria-label="Mute/Unmute audio">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="speaker-icon">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" class="sound-wave"></path>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" class="sound-wave"></path>
+      </svg>
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mute-icon" style="display: none;">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+        <line x1="23" y1="9" x2="17" y2="15"></line>
+        <line x1="17" y1="9" x2="23" y2="15"></line>
+      </svg>
+    </button>
     <script type="module" src="index.js"></script>
     <div id="outputContainer"></div>
   </body>
