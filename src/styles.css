@@ -1,8 +1,9 @@
 body {
   margin: 0;
-  overscroll-behavior: none;
 }
-
+html,body{
+    overscroll-behavior: none;
+}
 #positionInfo {
   position: fixed;
   top: 10px;
