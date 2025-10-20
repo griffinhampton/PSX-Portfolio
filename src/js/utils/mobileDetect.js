@@ -33,7 +33,7 @@ export function getQualitySettings() {
             particleCount: 5000,
             shadowMapSize: 512,
             enablePostProcessing: true,  // Enable for mobile
-            pixelSize: 1.75, 
+            pixelSize: 3, 
             renderScale: isLandscape ? 1.0 : 0.8,  // Full res in landscape, 80% in portrait
             enableFlashlight: false,
             enableDynamicEffects: true,
