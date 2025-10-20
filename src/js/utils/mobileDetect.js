@@ -36,7 +36,7 @@ export function getQualitySettings() {
             pixelSize: 1.5, 
             renderScale: isLandscape ? 1.0 : 0.8,  // Full res in landscape, 80% in portrait
             enableFlashlight: false,
-            enableDynamicEffects: false,
+            enableDynamicEffects: true,
             enablePositionTracker: false,
             antialias: false,
             maxLights: 2,
