@@ -77,8 +77,10 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
         console.log(`Boisvert teleported to position ${index}: [${spawnPos[0]}, ${spawnPos[1]}, ${spawnPos[2]}]`);
         console.log(`Boisvert facing camera at angle: ${(angleToCamera * 180 / Math.PI).toFixed(2)}°`);
         
-        // Make camera look at boisvert
-        lookAtBoisvert();
+        // 1/3 chance to make camera look at boisvert
+        if (Math.random() < 1/3) {
+            lookAtBoisvert();
+        }
     }
     
     /**

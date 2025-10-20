@@ -153,6 +153,17 @@ setTimeout(() => {
             clickCooldown: 5000 // 5 second cooldown before user can click away
         },
         {
+            objectName: 'paper', // New paper object in the GLTF scene
+            targetPosition: [2.71, 0.6, -0.02], // Raised 0.1 higher on Y
+            zOffset: 0,
+            shouldRotate: false, // No continuous rotation
+            shouldJitter: true, // Enable shaking
+            jitterAmount: 0.007, // Tighter shake area
+            targetRotation: [0 , Math.PI / 10-.4, Math.PI / 2], // Rotate 90° Y, 30° Z
+            moveDuration: 1.5,
+            clickCooldown: 5000
+        },
+        {
             objectName: 'painting', // Parent object name in the GLTF scene
             targetPosition: [1.71, 1.0, -0.04], // Moved forward +1 X and up +0.5 Y for better viewing
             zOffset: 0,

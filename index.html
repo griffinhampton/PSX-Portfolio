@@ -19,14 +19,12 @@
   <body>
     <!-- Welcome Popup -->
     <div id="welcomePopup" class="welcome-popup" style="display: none;">
-      <div class="welcome-card">
+      <div class="welcome-card draggable">
         <div class="welcome-glitch">⚠</div>
-        <h2 class="welcome-title">SIGNAL DETECTED</h2>
+        <h2 class="welcome-title">There's something in these woods...</h2>
         <div class="welcome-body">
-          <p class="welcome-text">You've stumbled upon something in the woods...</p>
-          <p class="welcome-text">Follow the <span class="text-glow">BLUE ORBS</span> to reach the cabin.</p>
-          <p class="welcome-text">Click to navigate. Point to explore.</p>
-          <p class="welcome-text warning-text">Be careful what you find.</p>
+          <p class="welcome-text"></p>
+          <p class="welcome-text">Click the blue orbs to move, and click anything with a red exclaimation point over it.</p>
         </div>
         <button class="welcome-button" id="welcomeButton">ENTER THE WOODS ></button>
       </div>
@@ -71,7 +69,7 @@
 
     <!-- LinkedIn Popup Card -->
     <div id="linkedinPopup" class="linkedin-popup" style="display: none;">
-      <div class="popup-card">
+      <div class="popup-card draggable">
         <button class="popup-close" data-popup="linkedinPopup" data-object="cola" aria-label="Close">×</button>
         <div class="popup-header">
           <svg class="linkedin-icon" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
@@ -88,9 +86,39 @@
       </div>
     </div>
 
+    <!-- Resume Image Popup (iframe style) -->
+    <div id="resumeImagePopup" class="resume-image-popup" style="display: none;">
+      <div class="popup-card popup-huge draggable">
+        <button class="popup-close" data-popup="resumeImagePopup" aria-label="Close">×</button>
+        <div class="popup-header">
+          <span class="popup-title">RESUME PREVIEW</span>
+        </div>
+        <div class="popup-body">
+          <img src="src/textures/Resume.webp" alt="Resume" class="resume-image" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Resume Popup Card -->
+    <div id="resumePopup" class="resume-popup" style="display: none;">
+      <div class="popup-card draggable">
+        <div class="resume-overlay"></div>
+        <button class="popup-close" data-popup="resumePopup" data-object="paper" aria-label="Close">×</button>
+        <div class="popup-header">
+          <span class="popup-title">MY RESUME</span>
+        </div>
+        <div class="popup-body">
+          <p class="popup-text">Download or view my resume below:</p>
+          <a href="src/textures/Resume.pdf" download class="resume-btn">DOWNLOAD PDF</a>
+          <a href="src/textures/Resume.pdf" target="_blank" rel="noopener noreferrer" class="resume-btn">OPEN IN NEW TAB</a>
+          <button id="showResumeImageBtn" class="resume-btn" style="margin-top:10px;">VIEW IMAGE (LARGE)</button>
+        </div>
+      </div>
+    </div>
+
     <!-- About Me Popup Card -->
     <div id="aboutPopup" class="about-popup" style="display: none;">
-      <div class="popup-card popup-card-scrollable">
+      <div class="popup-card popup-card-scrollable draggable">
         <button class="popup-close" data-popup="aboutPopup" data-object="painting" aria-label="Close">×</button>
         <div class="popup-header">
           <svg class="about-icon" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -134,6 +162,64 @@
       </svg>
     </button>
     <script type="module" src="index.js"></script>
+    <script>
+      // Show resume image popup
+      document.addEventListener('DOMContentLoaded', function() {
+        var showBtn = document.getElementById('showResumeImageBtn');
+        var imagePopup = document.getElementById('resumeImagePopup');
+        var closeBtn = imagePopup ? imagePopup.querySelector('.popup-close') : null;
+        if (showBtn && imagePopup) {
+          showBtn.addEventListener('click', function() {
+            imagePopup.style.display = 'block';
+          });
+        }
+        if (closeBtn && imagePopup) {
+          closeBtn.addEventListener('click', function() {
+            imagePopup.style.display = 'none';
+          });
+        }
+
+        // Drag and drop for all .draggable popups
+        function makeDraggable(popupSelector) {
+          var popups = document.querySelectorAll(popupSelector);
+          popups.forEach(function(popup) {
+            var isDragging = false;
+            var startX, startY, origX, origY;
+            var parent = popup.closest('.resume-image-popup, .resume-popup, .linkedin-popup, .about-popup, .welcome-popup');
+            var header = popup.querySelector('.popup-header') || popup;
+            header.style.cursor = 'grab';
+            header.addEventListener('mousedown', function(e) {
+              isDragging = true;
+              popup.classList.add('dragging');
+              startX = e.clientX;
+              startY = e.clientY;
+              var rect = parent.getBoundingClientRect();
+              origX = rect.left;
+              origY = rect.top;
+              document.body.style.userSelect = 'none';
+            });
+            document.addEventListener('mousemove', function(e) {
+              if (!isDragging) return;
+              var dx = e.clientX - startX;
+              var dy = e.clientY - startY;
+              parent.style.top = (origY + dy) + 'px';
+              parent.style.left = (origX + dx) + 'px';
+              parent.style.transform = 'translate(0, 0)';
+            });
+            document.addEventListener('mouseup', function() {
+              if (isDragging) {
+                isDragging = false;
+                popup.classList.remove('dragging');
+                document.body.style.userSelect = '';
+              }
+            });
+          });
+        }
+        makeDraggable('.draggable');
+      });
+    </script>
+  <link rel="stylesheet" href="src/resume-popup.css" />
+  <link rel="stylesheet" href="src/resume-image-popup.css" />
     <div id="outputContainer"></div>
   </body>
 </html>

@@ -1,3 +1,9 @@
+    // Track last camera position for TV exit
+    let lastCameraPosition = null;
+    let tvEntryTime = null;
+    let tvScreenMesh = null;
+    let isInFrontOfTV = false;
+// ...existing code...
 import gsap from 'gsap';
 import * as THREE from 'three';
 import { registerInteractiveManager } from './cursorManager.js';
@@ -67,6 +73,15 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
      * @param {number} config.clickCooldown - Cooldown in ms before user can click away (default: 0)
      */
     function setupInteractiveObject(object, config) {
+        // If this is the TV, store reference for later
+        if (config.objectName === 'tv') {
+            window.tvObject = object;
+            object.traverse((child) => {
+                if (child.isMesh && (!tvScreenMesh || child.name.toLowerCase().includes('screen'))) {
+                    tvScreenMesh = child;
+                }
+            });
+        }
         const targetPos = config.targetPosition;
         const zOffset = config.zOffset || 0;
         const shouldRotate = config.shouldRotate !== undefined ? config.shouldRotate : false;
@@ -79,14 +94,12 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         object.userData.isInteractive = true;
         object.userData.config = config;
         object.userData.shouldRotate = false; // Will be set to true after click
-        
+
         // Make painting unaffected by lights (convert to unlit material)
         if (config.objectName === 'painting') {
             object.traverse((child) => {
                 if (child.isMesh && child.material) {
                     const oldMaterial = child.material;
-                    
-                    // Replace with MeshBasicMaterial - completely unlit, no lighting calculations
                     const unlitMaterial = new THREE.MeshBasicMaterial({
                         map: oldMaterial.map,
                         color: oldMaterial.color,
@@ -95,13 +108,38 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                         side: oldMaterial.side,
                         alphaTest: oldMaterial.alphaTest
                     });
-                    
                     child.material = unlitMaterial;
-                    
-                    // Dispose old material to free memory
                     if (oldMaterial.dispose) {
                         oldMaterial.dispose();
                     }
+                }
+            });
+        }
+        // Load resume texture for paper immediately
+        if (config.objectName === 'paper') {
+            object.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    const oldMaterial = child.material;
+                    const loader = new THREE.TextureLoader();
+                    loader.load('src/textures/Resume.webp', (texture) => {
+                        texture.center.set(0.5, 0.5);
+                        texture.rotation = -Math.PI / 2;
+                        // Zoom out by 10%
+                        texture.repeat.set(0.9, 0.9);
+                        texture.offset.set(0.05, 0.05);
+                        const unlitMaterial = new THREE.MeshBasicMaterial({
+                            map: texture,
+                            color: oldMaterial.color,
+                            transparent: oldMaterial.transparent,
+                            opacity: oldMaterial.opacity,
+                            side: oldMaterial.side,
+                            alphaTest: oldMaterial.alphaTest
+                        });
+                        child.material = unlitMaterial;
+                        if (oldMaterial.dispose) {
+                            oldMaterial.dispose();
+                        }
+                    });
                 }
             });
         }
@@ -131,6 +169,12 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
      * Handle object click - move and start rotation or jitter
      */
     function onObjectClick(object) {
+        // If entering TV, store last position and entry time
+        if (config.objectName === 'tv') {
+            lastCameraPosition = camera.position.clone();
+            tvEntryTime = Date.now();
+            isInFrontOfTV = true;
+        }
         const config = object.userData.config;
         const targetPos = config.targetPosition;
         const zOffset = config.zOffset || 0;
@@ -178,7 +222,28 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                         popup.style.display = 'block';
                     }
                 }
-                
+
+                // Show Resume popup for paper
+                if (config.objectName === 'paper') {
+                    const popup = document.getElementById('resumePopup');
+                    if (popup) {
+                        popup.style.display = 'block';
+                    }
+                    // Set Resume.webp as paper texture
+                    object.traverse((child) => {
+                        if (child.isMesh && child.material) {
+                            const loader = new THREE.TextureLoader();
+                            loader.load('src/textures/Resume.webp', (texture) => {
+                                // Rotate texture 90 degrees to portrait
+                                texture.center.set(0.5, 0.5);
+                                texture.rotation = -Math.PI / 2;
+                                child.material.map = texture;
+                                child.material.needsUpdate = true;
+                            });
+                        }
+                    });
+                }
+
                 // Show About Me popup for painting
                 if (config.objectName === 'painting') {
                     const popup = document.getElementById('aboutPopup');
@@ -228,7 +293,15 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 popup.style.display = 'none';
             }
         }
-        
+
+        // Hide Resume popup when paper resets
+        if (config.objectName === 'paper') {
+            const popup = document.getElementById('resumePopup');
+            if (popup) {
+                popup.style.display = 'none';
+            }
+        }
+
         // Hide About Me popup when painting resets
         if (config.objectName === 'painting') {
             const popup = document.getElementById('aboutPopup');
@@ -260,6 +333,48 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
      * Handle pointer events
      */
     function onPointerDown(event) {
+        // If in front of TV and 5 seconds have passed since entry
+        if (isInFrontOfTV && tvEntryTime && (Date.now() - tvEntryTime > 5000)) {
+            // Get pointer position
+            const rect = domElement.getBoundingClientRect();
+            let clientX, clientY;
+            if (event.touches && event.touches.length > 0) {
+                clientX = event.touches[0].clientX;
+                clientY = event.touches[0].clientY;
+            } else if (event.changedTouches && event.changedTouches.length > 0) {
+                clientX = event.changedTouches[0].clientX;
+                clientY = event.changedTouches[0].clientY;
+            } else {
+                clientX = event.clientX;
+                clientY = event.clientY;
+            }
+            pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+            pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(pointer, camera);
+            // Check if click hit any part of the TV object
+            if (window.tvObject) {
+                const tvMeshes = [];
+                window.tvObject.traverse(child => {
+                    if (child.isMesh) tvMeshes.push(child);
+                });
+                const tvIntersects = raycaster.intersectObjects(tvMeshes, false);
+                if (tvIntersects.length === 0 && lastCameraPosition) {
+                    // Clicked outside the TV, move camera back
+                    gsap.to(camera.position, {
+                        x: lastCameraPosition.x,
+                        y: lastCameraPosition.y,
+                        z: lastCameraPosition.z,
+                        duration: 1.5,
+                        ease: 'power2.inOut',
+                        onComplete: () => {
+                            isInFrontOfTV = false;
+                            tvEntryTime = null;
+                        }
+                    });
+                    return;
+                }
+            }
+        }
         // Check if camera is at an allowed position
         if (!isCameraAtAllowedPosition()) {
             return; // Don't process clicks if camera is not at allowed position
