@@ -63,11 +63,6 @@ export function createAnimationLoop({
             updateParticles(particleArrays, undefined, shouldUpdateParticles);
         }
         
-        // Rotate furniture model
-        if (models.furniture) {
-            models.furniture.rotation.y += .005;
-        }
-        
         // Update controls (required when damping is enabled)
         controls.update();
         

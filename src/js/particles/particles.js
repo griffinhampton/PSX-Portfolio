@@ -11,7 +11,7 @@ function generateSnowPosition() {
     // House bounds: x: -3 to 6, z: -3 to 4
     do {
         x = (Math.random() - 0.5) * 32; // -16 to 16
-        z = Math.random() * 50 - 10; // -10 to 40
+        z = Math.random() * 60 - 10; // -10 to 50
     } while (x >= -3 && x <= 6 && z >= -3 && z <= 4);
     
     return {

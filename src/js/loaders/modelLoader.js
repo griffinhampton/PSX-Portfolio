@@ -13,23 +13,9 @@ export function setupModelLoader(scene, allMeshes) {
         environment: null
     };
 
-    // Load furniture model
-    gltfLoader.load("src/models/furniture/nightstand.gltf", (gltfScene) => {
-        models.furniture = gltfScene.scene;
-        models.furniture.position.set(-1, -1, -2);
-        console.log("furniture loaded successfully!");
-        scene.add(models.furniture);
-        
-        // Add all meshes to raycasting array
-        models.furniture.traverse((child) => {
-            if (child.isMesh) {
-                allMeshes.push(child);
-            }
-        });
-    });
 
     // Load environment model
-    gltfLoader.load('src/models/env/mountainPlane.gltf', (gltfScene) => {
+    gltfLoader.load('src/models/env/whole_scene.gltf', (gltfScene) => {
         models.environment = gltfScene.scene;
         models.environment.position.set(0, 0, 0);
         scene.add(models.environment);
