@@ -238,10 +238,15 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
                     currentIndex = targetIdx;
                     updateVisibleOrbs();
                     
-                    // Turn off flashlight if at last position
-                    if (flashlight && targetIdx === positions.length - 1) {
-                        console.log('Reached last position - turning off flashlight');
-                        flashlight.intensity = 0;
+                    // Turn off flashlight if at last position, turn on otherwise
+                    if (flashlight) {
+                        if (targetIdx === positions.length - 1) {
+                            console.log('Reached last position - turning off flashlight');
+                            flashlight.intensity = 0;
+                        } else {
+                            console.log('Moving to position - turning on flashlight');
+                            flashlight.intensity = 30;
+                        }
                     }
                 }
             });
@@ -258,6 +263,12 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
         update() {
             // Could add distance-based checks here if needed
             // For now, orbs are managed on click completion
+        },
+        getCurrentIndex() {
+            return currentIndex;
+        },
+        isAtLastPosition() {
+            return currentIndex === positions.length - 1;
         },
         dispose() {
             domElement.removeEventListener('pointerdown', onPointerDown);

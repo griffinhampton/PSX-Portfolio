@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { updateParticles } from "../particles/particles.js";
 
 /**
  * Create and start the animation loop
@@ -8,7 +9,7 @@ import * as THREE from "three";
  * @param {Object} params.controls - The orbit controls
  * @param {Object} params.qualitySettings - The quality settings object
  * @param {Object} params.lights - The lights object containing flashlight, raycaster, mouse
- * @param {THREE.Points} params.particlesMesh - The particle mesh for snow effect
+ * @param {Array} params.particleArrays - Array of particle system objects for snow effect
  * @param {Object} params.models - The loaded models object
  * @param {Function} params.updatePositionInfo - Function to update position info display
  */
@@ -18,7 +19,7 @@ export function createAnimationLoop({
     controls,
     qualitySettings,
     lights,
-    particlesMesh,
+    particleArrays,
     models,
     updatePositionInfo,
     orbManager
@@ -56,14 +57,10 @@ export function createAnimationLoop({
             }
         }
         
-        // Keep snow centered on camera - simplified for mobile
-        if (!qualitySettings.isMobile && particlesMesh) {
-            particlesMesh.position.copy(window.camera.position * 0.0000001 * t);
-            particlesMesh.rotation.y += 0.00001;
-            particlesMesh.position.y += 0.00005;
-            if (particlesMesh.position.y <= -1) {
-                particlesMesh.position.y += 3;
-            }
+        // Update falling snow particles - stop at last position
+        if (!qualitySettings.isMobile && particleArrays) {
+            const shouldUpdateParticles = !orbManager || !orbManager.isAtLastPosition();
+            updateParticles(particleArrays, undefined, shouldUpdateParticles);
         }
         
         // Rotate furniture model

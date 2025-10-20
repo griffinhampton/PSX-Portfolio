@@ -26,7 +26,9 @@ export function getQualitySettings() {
             isMobile: true,
             particleCount: 5000,
             shadowMapSize: 512,
-            enablePostProcessing: false,
+            enablePostProcessing: true,  // Enable for mobile
+            pixelSize: 6,  // Larger pixels = better performance (desktop uses 3)
+            renderScale: 0.75,  // Render at 75% resolution then upscale
             enableFlashlight: false,
             enableDynamicEffects: false,
             enablePositionTracker: false,
@@ -38,9 +40,11 @@ export function getQualitySettings() {
     } else {
         return {
             isMobile: false,
-            particleCount: 100000,
+            particleCount: 5000,
             shadowMapSize: 1024,
             enablePostProcessing: true,
+            pixelSize: 3,  // Smaller pixels for sharper look
+            renderScale: 1.0,  // Full resolution
             enableFlashlight: true,
             enableDynamicEffects: true,
             enablePositionTracker: true,

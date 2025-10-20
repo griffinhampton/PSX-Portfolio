@@ -8,10 +8,18 @@ import { ShaderPass } from "jsm/postprocessing/ShaderPass.js";
  * @param {THREE.WebGLRenderer} renderer - The WebGL renderer
  * @param {THREE.Scene} scene - The scene to render
  * @param {THREE.Camera} camera - The camera to render from
+ * @param {Object} qualitySettings - Quality settings object with pixelSize and renderScale
  * @returns {Object} Object containing composer and pixelationPass
  */
-export function setupPostProcessing(renderer, scene, camera) {
+export function setupPostProcessing(renderer, scene, camera, qualitySettings = {}) {
+    // Apply render scale for performance (mobile can render at lower res)
+    const renderScale = qualitySettings.renderScale || 1.0;
+    const renderWidth = Math.floor(window.innerWidth * renderScale);
+    const renderHeight = Math.floor(window.innerHeight * renderScale);
+    
     const composer = new EffectComposer(renderer);
+    composer.setSize(renderWidth, renderHeight);
+    
     const renderPass = new RenderPass(scene, camera);
     composer.addPass(renderPass);
 
@@ -20,7 +28,7 @@ export function setupPostProcessing(renderer, scene, camera) {
         uniforms: {
             tDiffuse: { value: null },
             resolution: { value: new THREE.Vector2() },
-            pixelSize: { value: 3 } // Adjust this value for different pixelation levels
+            pixelSize: { value: qualitySettings.pixelSize || 3 } // Use quality setting or default to 3
         },
         vertexShader: `
             varying vec2 vUv;
@@ -44,7 +52,7 @@ export function setupPostProcessing(renderer, scene, camera) {
     };
 
     const pixelationPass = new ShaderPass(pixelShader);
-    pixelationPass.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    pixelationPass.uniforms.resolution.value.set(renderWidth, renderHeight);
     composer.addPass(pixelationPass);
 
     return { composer, pixelationPass };

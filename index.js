@@ -3,7 +3,7 @@ import { getQualitySettings } from "./src/js/utils/mobileDetect.js";
 import { setupScene } from "./src/js/scene/sceneSetup.js";
 import { setupPostProcessing } from "./src/js/postprocessing/postprocesses.js";
 import { setupLights } from "./src/js/lights/lights.js";
-import { setupParticles, setupParticleMouseListener } from "./src/js/particles/particles.js";
+import { setupParticles, setupParticleMouseListener, updateParticles } from "./src/js/particles/particles.js";
 import { setupModelLoader } from "./src/js/loaders/modelLoader.js";
 import { setupCameraControls, setupOrbNavigation } from "./src/js/controls/cameraControls.js";
 import { setupPositionTracker } from "./src/js/utils/positionTracker.js";
@@ -26,10 +26,10 @@ const { scene, camera, renderer } = setupScene(qualitySettings);
 window.camera = camera;
 window.scene = scene;
 
-// Set up post-processing with pixelation effect - only on desktop
+// Set up post-processing with pixelation effect - now works on mobile too!
 let composer, pixelationPass;
 if (qualitySettings.enablePostProcessing) {
-    const postProcessing = setupPostProcessing(renderer, scene, camera);
+    const postProcessing = setupPostProcessing(renderer, scene, camera, qualitySettings);
     composer = postProcessing.composer;
     pixelationPass = postProcessing.pixelationPass;
 }
@@ -57,7 +57,7 @@ const navigationPositions = [
 
 // Set up particles
 const particles = setupParticles(scene, cross, qualitySettings);
-const particlesMesh = particles.particlesMesh;
+const particleArrays = particles.particleArrays;
 
 // Set up lights
 const lights = setupLights(scene, camera, qualitySettings);
@@ -87,7 +87,7 @@ const animate = createAnimationLoop({
     controls,
     qualitySettings,
     lights,
-    particlesMesh,
+    particleArrays,
     models,
     updatePositionInfo,
     orbManager

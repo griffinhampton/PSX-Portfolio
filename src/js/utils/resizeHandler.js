@@ -20,8 +20,11 @@ export function setupResizeHandler(camera, renderer, composer, pixelationPass, q
         
         // Update composer and pixelation shader resolution - only if post-processing is enabled
         if (qualitySettings.enablePostProcessing && composer && pixelationPass) {
-            composer.setSize(width, height);
-            pixelationPass.uniforms.resolution.value.set(width, height);
+            const renderScale = qualitySettings.renderScale || 1.0;
+            const renderWidth = Math.floor(width * renderScale);
+            const renderHeight = Math.floor(height * renderScale);
+            composer.setSize(renderWidth, renderHeight);
+            pixelationPass.uniforms.resolution.value.set(renderWidth, renderHeight);
         }
     }
 
