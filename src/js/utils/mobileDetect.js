@@ -27,7 +27,7 @@ export function getQualitySettings() {
             particleCount: 5000,
             shadowMapSize: 512,
             enablePostProcessing: true,  // Enable for mobile
-            pixelSize: 4,  // Larger pixels = better performance (desktop uses 3)
+            pixelSize: 3,  // Larger pixels = better performance (desktop uses 3)
             renderScale: 0.75,  // Render at 75% resolution then upscale
             enableFlashlight: false,
             enableDynamicEffects: false,
