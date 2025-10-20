@@ -27,7 +27,7 @@ export function createAnimationLoop({
     getInteractiveManager,
     youtubeScreen
 }) {
-    const { flashlight, raycaster, mouse } = lights;
+    const { flashlight, raycaster, mouse, mobileSpotlight } = lights;
 
     function animate(t = 0) {
         requestAnimationFrame(animate);
@@ -59,6 +59,25 @@ export function createAnimationLoop({
                 updatePositionInfo(raycaster, mouse);
             }
         }
+
+        // Update mobile spotlight - only on mobile, points at boisvert when camera moves (not inside)
+        if (qualitySettings.isMobile && mobileSpotlight) {
+            // Update spotlight position to camera
+            mobileSpotlight.position.copy(window.camera.position);
+            
+            // Get boisvert's position from the teleporter
+            if (window.boisvertTeleporter && window.boisvertTeleporter.getBoisvertPosition) {
+                const boisvertPos = window.boisvertTeleporter.getBoisvertPosition();
+                
+                // Only update target if we're not at the last position (inside)
+                const isAtLastPosition = orbManager && orbManager.isAtLastPosition();
+                
+                if (boisvertPos && !isAtLastPosition) {
+                    mobileSpotlight.target.position.copy(boisvertPos);
+                    mobileSpotlight.target.updateMatrixWorld();
+                }
+            }
+        }
         
         // Update falling snow particles - stop at last position (works on both desktop and mobile)
         if (particleArrays) {
@@ -78,6 +97,16 @@ export function createAnimationLoop({
         const interactiveManager = getInteractiveManager ? getInteractiveManager() : null;
         if (interactiveManager && typeof interactiveManager.update === 'function') {
             interactiveManager.update();
+        }
+        
+        // Update camera interactive objects (indicators)
+        if (window.cameraInteractiveManager && typeof window.cameraInteractiveManager.update === 'function') {
+            window.cameraInteractiveManager.update();
+        }
+        
+        // Update Boisvert teleporter
+        if (window.boisvertTeleporter && typeof window.boisvertTeleporter.update === 'function') {
+            window.boisvertTeleporter.update();
         }
         
         // Render using composer for post-processing, or fallback to renderer

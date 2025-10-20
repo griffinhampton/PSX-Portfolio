@@ -17,6 +17,11 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
     const interactiveObjects = [];
     let currentlyActiveObject = null; // Track the currently active/rotating object
     let cooldownEndTime = 0; // Timestamp when cooldown ends
+    const indicators = new Map(); // Map of object -> indicator element
+    
+    // Store scene reference globally for close button access
+    window.interactiveObjectsScene = scene;
+    window.interactiveObjectsList = interactiveObjects;
     
     // Distance threshold for position matching (camera can be slightly off)
     const POSITION_THRESHOLD = 0.5;
@@ -56,6 +61,8 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
      * @param {number} config.zOffset - Additional z offset from target position (default: 0)
      * @param {boolean} config.shouldRotate - Whether object should rotate (default: false)
      * @param {number} config.rotationSpeed - Speed of rotation if enabled (default: 0.01)
+     * @param {boolean} config.shouldJitter - Whether object should jitter (default: false)
+     * @param {number} config.jitterAmount - Amount of random jitter movement (default: 0.01)
      * @param {number} config.moveDuration - Duration of move animation in seconds (default: 1.5)
      * @param {number} config.clickCooldown - Cooldown in ms before user can click away (default: 0)
      */
@@ -72,12 +79,56 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         object.userData.isInteractive = true;
         object.userData.config = config;
         object.userData.shouldRotate = false; // Will be set to true after click
+        
+        // Make painting unaffected by lights (convert to unlit material)
+        if (config.objectName === 'painting') {
+            object.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    const oldMaterial = child.material;
+                    
+                    // Replace with MeshBasicMaterial - completely unlit, no lighting calculations
+                    const unlitMaterial = new THREE.MeshBasicMaterial({
+                        map: oldMaterial.map,
+                        color: oldMaterial.color,
+                        transparent: oldMaterial.transparent,
+                        opacity: oldMaterial.opacity,
+                        side: oldMaterial.side,
+                        alphaTest: oldMaterial.alphaTest
+                    });
+                    
+                    child.material = unlitMaterial;
+                    
+                    // Dispose old material to free memory
+                    if (oldMaterial.dispose) {
+                        oldMaterial.dispose();
+                    }
+                }
+            });
+        }
+        object.userData.shouldJitter = false; // Will be set to true after click
+        object.userData.targetPosition = null; // Store target position for jitter
+        object.userData.hasBeenClicked = false; // Track if object has been clicked
 
         interactiveObjects.push(object);
+        
+        // Create indicator for this object
+        createIndicator(object);
+    }
+    
+    /**
+     * Create exclamation mark indicator for an object
+     */
+    function createIndicator(object) {
+        const indicator = document.createElement('div');
+        indicator.className = 'interactive-indicator';
+        indicator.textContent = '!';
+        indicator.style.display = 'none'; // Hidden by default
+        document.body.appendChild(indicator);
+        indicators.set(object, indicator);
     }
 
     /**
-     * Handle object click - move and start rotation
+     * Handle object click - move and start rotation or jitter
      */
     function onObjectClick(object) {
         const config = object.userData.config;
@@ -89,8 +140,18 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         // Set as the currently active object
         currentlyActiveObject = object;
         
+        // Mark as clicked and hide indicator
+        object.userData.hasBeenClicked = true;
+        const indicator = indicators.get(object);
+        if (indicator) {
+            indicator.style.display = 'none';
+        }
+        
         // Set cooldown time
         cooldownEndTime = Date.now() + clickCooldown;
+
+        // Store target position for jitter reference
+        object.userData.targetPosition = new THREE.Vector3(targetPos[0], targetPos[1], targetPos[2] + zOffset);
 
         // Animate to target position
         gsap.to(object.position, {
@@ -104,25 +165,92 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 if (config.shouldRotate) {
                     object.userData.shouldRotate = true;
                 }
+                
+                // Start jitter after movement completes
+                if (config.shouldJitter) {
+                    object.userData.shouldJitter = true;
+                }
+                
+                // Show LinkedIn popup for cola bottle
+                if (config.objectName === 'cola') {
+                    const popup = document.getElementById('linkedinPopup');
+                    if (popup) {
+                        popup.style.display = 'block';
+                    }
+                }
+                
+                // Show About Me popup for painting
+                if (config.objectName === 'painting') {
+                    const popup = document.getElementById('aboutPopup');
+                    if (popup) {
+                        popup.style.display = 'block';
+                    }
+                }
             }
         });
+
+        // Animate rotation if targetRotation is specified
+        if (config.targetRotation) {
+            // Store target rotation for swaying reference
+            object.userData.targetRotation = {
+                x: config.targetRotation[0],
+                y: config.targetRotation[1],
+                z: config.targetRotation[2]
+            };
+            
+            gsap.to(object.rotation, {
+                x: config.targetRotation[0],
+                y: config.targetRotation[1],
+                z: config.targetRotation[2],
+                duration: moveDuration,
+                ease: 'power2.inOut'
+            });
+        }
     }
 
     /**
-     * Reset object back to original position and stop rotation
+     * Reset object back to original position and stop rotation/jitter
      */
     function resetObject(object) {
         const config = object.userData.config;
         const moveDuration = config.moveDuration || 1.5;
 
-        // Stop rotation immediately
+        // Stop rotation and jitter immediately
         object.userData.shouldRotate = false;
+        object.userData.shouldJitter = false;
+        object.userData.targetPosition = null;
+        object.userData.targetRotation = null;
+        
+        // Hide LinkedIn popup when cola resets
+        if (config.objectName === 'cola') {
+            const popup = document.getElementById('linkedinPopup');
+            if (popup) {
+                popup.style.display = 'none';
+            }
+        }
+        
+        // Hide About Me popup when painting resets
+        if (config.objectName === 'painting') {
+            const popup = document.getElementById('aboutPopup');
+            if (popup) {
+                popup.style.display = 'none';
+            }
+        }
 
         // Animate back to original position
         gsap.to(object.position, {
             x: object.userData.originalPosition.x,
             y: object.userData.originalPosition.y,
             z: object.userData.originalPosition.z,
+            duration: moveDuration,
+            ease: 'power2.inOut'
+        });
+        
+        // Animate back to original rotation
+        gsap.to(object.rotation, {
+            x: object.userData.originalRotation.x,
+            y: object.userData.originalRotation.y,
+            z: object.userData.originalRotation.z,
             duration: moveDuration,
             ease: 'power2.inOut'
         });
@@ -219,15 +347,79 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
     }
 
     /**
-     * Update rotating objects each frame
+     * Update rotating and jittering objects each frame
      */
     function update() {
+        const time = Date.now() * 0.001; // Convert to seconds
+        const isAtAllowedPos = isCameraAtAllowedPosition();
+        
         interactiveObjects.forEach(obj => {
             if (obj.userData.shouldRotate) {
                 const rotationSpeed = obj.userData.config.rotationSpeed || 0.01;
                 obj.rotation.y += rotationSpeed;
             }
+            
+            if (obj.userData.shouldJitter && obj.userData.targetPosition) {
+                const jitterAmount = obj.userData.config.jitterAmount || 0.01;
+                const target = obj.userData.targetPosition;
+                
+                // Use sine waves for smooth swaying motion
+                const swaySpeed = 0.5; // Slower = more gentle sway
+                const swayX = Math.sin(time * swaySpeed) * jitterAmount * 5;
+                const swayY = Math.sin(time * swaySpeed * 0.7) * jitterAmount * 3;
+                const swayZ = Math.cos(time * swaySpeed * 0.5) * jitterAmount * 4;
+                
+                // Apply smooth swaying to position
+                obj.position.x = target.x + swayX;
+                obj.position.y = target.y + swayY;
+                obj.position.z = target.z + swayZ;
+                
+                // Add gentle rotation sway
+                const rotTarget = obj.userData.targetRotation;
+                if (rotTarget) {
+                    obj.rotation.x = rotTarget.x + Math.sin(time * swaySpeed * 0.8) * 0.02;
+                    obj.rotation.z = rotTarget.z + Math.cos(time * swaySpeed * 0.6) * 0.02;
+                }
+            }
+            
+            // Update indicator position and visibility
+            updateIndicator(obj, isAtAllowedPos);
         });
+    }
+    
+    /**
+     * Update indicator position for an object
+     */
+    function updateIndicator(object, showIndicator) {
+        const indicator = indicators.get(object);
+        if (!indicator) return;
+        
+        // Only show indicator if:
+        // 1. Camera is at allowed position
+        // 2. Object hasn't been clicked yet
+        // 3. Object is not currently active
+        const shouldShow = showIndicator && 
+                          !object.userData.hasBeenClicked && 
+                          currentlyActiveObject !== object;
+        
+        if (!shouldShow) {
+            indicator.style.display = 'none';
+            return;
+        }
+        
+        // Project 3D position to 2D screen space
+        const vector = new THREE.Vector3();
+        object.getWorldPosition(vector);
+        vector.project(camera);
+        
+        // Convert to pixel coordinates
+        const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+        
+        // Update indicator position
+        indicator.style.left = `${x}px`;
+        indicator.style.top = `${y}px`;
+        indicator.style.display = 'block';
     }
 
     // Find and setup all configured objects
@@ -249,11 +441,88 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
     domElement.addEventListener('pointerdown', onPointerDown);
     domElement.addEventListener('touchstart', onPointerDown, { passive: false });
 
+    // Setup close button handlers for all popups
+    setupPopupCloseButtons();
+
     return {
         update,
         dispose() {
             domElement.removeEventListener('pointerdown', onPointerDown);
             domElement.removeEventListener('touchstart', onPointerDown);
+            
+            // Clean up indicators
+            indicators.forEach((indicator) => {
+                if (indicator.parentNode) {
+                    indicator.parentNode.removeChild(indicator);
+                }
+            });
+            indicators.clear();
         }
     };
+}
+
+/**
+ * Setup close button handlers for popup cards
+ */
+function setupPopupCloseButtons() {
+    const closeButtons = document.querySelectorAll('.popup-close');
+    
+    closeButtons.forEach(button => {
+        button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            
+            const popupId = button.getAttribute('data-popup');
+            const objectName = button.getAttribute('data-object');
+            
+            // Hide the popup
+            const popup = document.getElementById(popupId);
+            if (popup) {
+                popup.style.display = 'none';
+            }
+            
+            // Reset the associated object
+            if (objectName && window.interactiveObjectsList) {
+                // Find the object in the interactive objects list
+                const objectToReset = window.interactiveObjectsList.find(obj => obj.name === objectName);
+                if (objectToReset) {
+                    resetObjectToOriginal(objectToReset);
+                }
+            }
+        });
+    });
+}
+
+/**
+ * Helper function to reset an object to its original position and rotation
+ */
+function resetObjectToOriginal(object) {
+    const config = object.userData.config;
+    const originalPos = object.userData.originalPosition;
+    const originalRot = object.userData.originalRotation;
+    
+    if (!originalPos || !originalRot) return;
+    
+    // Stop rotation and jitter
+    object.userData.shouldRotate = false;
+    object.userData.shouldJitter = false;
+    object.userData.targetPosition = null;
+    
+    // Animate back to original position and rotation
+    const resetDuration = config.moveDuration || 1.5;
+    
+    gsap.to(object.position, {
+        x: originalPos.x,
+        y: originalPos.y,
+        z: originalPos.z,
+        duration: resetDuration,
+        ease: 'power2.inOut'
+    });
+    
+    gsap.to(object.rotation, {
+        x: originalRot.x,
+        y: originalRot.y,
+        z: originalRot.z,
+        duration: resetDuration,
+        ease: 'power2.inOut'
+    });
 }

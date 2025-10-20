@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Getting Started with Three.js</title>
+    <title>Griffin Hampton - PSX Portfolio</title>
+    <link rel="icon" type="image/png" href="src/textures/logo.png" />
     <link rel="stylesheet" href="src/styles.css" />
     <script type="importmap">
 			{
@@ -16,6 +17,32 @@
 		</script>
   </head>
   <body>
+    <!-- Welcome Popup -->
+    <div id="welcomePopup" class="welcome-popup" style="display: none;">
+      <div class="welcome-card">
+        <div class="welcome-glitch">⚠</div>
+        <h2 class="welcome-title">SIGNAL DETECTED</h2>
+        <div class="welcome-body">
+          <p class="welcome-text">You've stumbled upon something in the woods...</p>
+          <p class="welcome-text">Follow the <span class="text-glow">BLUE ORBS</span> to reach the cabin.</p>
+          <p class="welcome-text">Click to navigate. Point to explore.</p>
+          <p class="welcome-text warning-text">Be careful what you find.</p>
+        </div>
+        <button class="welcome-button" id="welcomeButton">ENTER THE WOODS ></button>
+      </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="loading-screen">
+      <div class="loading-content">
+        <div class="loading-message" id="loadingMessage">INITIALIZING...</div>
+        <div class="loading-bar-container">
+          <div class="loading-bar" id="loadingBar"></div>
+        </div>
+        <div class="loading-percent" id="loadingPercent">0%</div>
+      </div>
+    </div>
+
     <!-- Navigation Bar -->
     <nav class="navbar">
       <div class="navbar-menu">
@@ -41,6 +68,57 @@
         </button>
       </div>
     </nav>
+
+    <!-- LinkedIn Popup Card -->
+    <div id="linkedinPopup" class="linkedin-popup" style="display: none;">
+      <div class="popup-card">
+        <button class="popup-close" data-popup="linkedinPopup" data-object="cola" aria-label="Close">×</button>
+        <div class="popup-header">
+          <svg class="linkedin-icon" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+          </svg>
+          <span class="popup-title">CONNECT WITH ME</span>
+        </div>
+        <div class="popup-body">
+          <p class="popup-text">VIEW MY PROFESSIONAL PROFILE</p>
+          <a href="https://www.linkedin.com/in/griffin-hampton-56035235a" target="_blank" rel="noopener noreferrer" class="linkedin-button">
+            VISIT LINKEDIN →
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- About Me Popup Card -->
+    <div id="aboutPopup" class="about-popup" style="display: none;">
+      <div class="popup-card popup-card-scrollable">
+        <button class="popup-close" data-popup="aboutPopup" data-object="painting" aria-label="Close">×</button>
+        <div class="popup-header">
+          <svg class="about-icon" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span class="popup-title">ABOUT ME</span>
+        </div>
+        <div class="popup-body popup-body-scrollable">
+          <h3 class="about-section-title">WHO AM I?</h3>
+          <p class="popup-text">I'm Griffin Hampton, a second-year Computer Science major at the University of Louisville's J.B. Speed School of Engineering with a 3.8 GPA. Oh, and I'm the one with red hair.</p>
+          
+          <h3 class="about-section-title">WHAT I DO</h3>
+          <p class="popup-text">I spend pretty much every day on my computer, typically coding and listening to music. If I see something cool I will invest weeks of time into it, that's how I got into Three.js. I learned Blender and created (almost) all of these assets myself (my friend Seth made the sick lantern). My next venture is going to be solving 100 hard difficulty LeetCode problems (or find an internship/job).</p>
+          
+          <div class="technical-skills-section">
+            <h3 class="about-section-title">TECHNICAL SKILLS</h3>
+            <p class="popup-text">• Python, C, C++, C#, Java<br>• HTML, CSS, JavaScript, React.js, Three.js<br>• Git/GitHub, VS Code, VBA<br>• OOP Design & Web Development<br>• AI Integration & UX/UI Design<br>• API Integration</p>
+          </div>
+          
+          <h3 class="about-section-title">EXPERIENCE HIGHLIGHTS</h3>
+          <p class="popup-text">• Built a professional sorting algorithm in Excel VBA that increased workflow efficiency by 35%<br>• Developed interactive web experiences using React.js, Three.js, and modern web technologies<br>• Former President of the Computer Science Honors Society<br>• Current Outreach Chair of Honors Student Council<br>• 50+ LinkedIn Skills & 10+ Certifications</p>
+          
+          <h3 class="about-section-title">LET'S CONNECT</h3>
+          <p class="popup-text">I'm seeking a Spring/Summer 2026 Software Engineering/Computer Science/Game Dev/Web Design internship (literally anything in CS I love it all). Feel free to explore my portfolio and reach out if you'd like to collaborate/hire me!</p>
+        </div>
+      </div>
+    </div>
 
     <div id="positionInfo">Hover over objects to see position</div>
     <button id="muteButton" class="mute-button" aria-label="Mute/Unmute audio">

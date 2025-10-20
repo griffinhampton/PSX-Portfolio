@@ -15,7 +15,11 @@ import { setupScreenVideoTexture } from "./src/js/utils/screenVideoTexture.js";
 import { initializeCursorManager } from "./src/js/utils/cursorManager.js";
 import { setupMuteButton } from "./src/js/utils/audioController.js";
 import { setupNavbar } from "./src/js/utils/navbar.js";
+import { initLoadingScreen } from "./src/js/utils/loadingScreen.js";
+import { setupBoisvertTeleporter } from "./src/js/utils/boisvertTeleporter.js";
 
+// Initialize loading screen
+const loadingController = initLoadingScreen();
 
 const qualitySettings = getQualitySettings();
 
@@ -64,11 +68,30 @@ const navigationPositions = [
     [3.13, 0.7, 0.04]
 ];
 
-// Positions where camera-interactive objects are (TV, painting, etc.)
+// Boisvert spawn positions for each camera position
+const boisvertSpawnPositions = [
+    [-3.5, -.5, 42],      // Position 0: First camera position
+    [-10, 1.5, 32],          // Position 1
+    [11.11,1.2, 25],          // Position 2
+    [-3.5, -2.5, 20],          // Position 3
+    [-3.15, -1, -.9],          // Position 4
+    [-3.8, -1.5, 0]           // Position 5: Last/inside position
+];
+
+// Boisvert Z rotation for each navigation position
+const boisvertZRotations = [
+  Math.PI / 2-4.5, // nav position 0
+  Math.PI / 2, // nav position 1
+  Math.PI /2, // nav position 2
+  Math.PI / 5, // nav position 3
+  0,           // nav position 4
+  -Math.PI / 2 // nav position 5
+];
+
+// Positions where camera-interactive objects are (TV screen)
 // These are NOT part of the orb navigation - accessed only by clicking objects
 const cameraInteractivePositions = [
-    [-0.3, 0.10, -0.85], // Screen position
-    [1.66, 0.9, -1] // Painting position
+    [-0.3, 0.10, -0.85] // Screen position
 ];
 
 // Set up particles
@@ -98,6 +121,21 @@ try {
 // Setup navbar navigation
 setupNavbar(camera, navigationPositions, orbManager, flashlight);
 
+// Setup Boisvert teleporter (wait for model to load)
+let boisvertTeleporter = null;
+setTimeout(() => {
+    boisvertTeleporter = setupBoisvertTeleporter(
+        scene,
+        camera,
+        navigationPositions,
+        controls,
+        boisvertSpawnPositions,
+        boisvertZRotations // <-- pass the array here
+    );
+    // Store globally for animation loop access
+    window.boisvertTeleporter = boisvertTeleporter;
+}, 2000); // Wait 2 seconds for model to load
+
 // Set up interactive objects - Will be set after model loads
 let interactiveManager = null;
 
@@ -113,17 +151,25 @@ setTimeout(() => {
             rotationSpeed: 0.005, // Slow rotation speed
             moveDuration: 1.5,
             clickCooldown: 5000 // 5 second cooldown before user can click away
+        },
+        {
+            objectName: 'painting', // Parent object name in the GLTF scene
+            targetPosition: [1.71, 1.0, -0.04], // Moved forward +1 X and up +0.5 Y for better viewing
+            zOffset: 0,
+            shouldRotate: false, // No rotation
+            shouldJitter: true, // Enable swaying motion
+            jitterAmount: 0.01, // Amount of sway movement
+            targetRotation: [0, Math.PI / 2, 0], // Rotate to face camera (90 degrees on Y axis)
+            moveDuration: 1.5,
+            clickCooldown: 5000 // 5 second cooldown before user can click away
         }
         // Add more interactive objects here with the same pattern
     ];
 
     // Define allowed camera positions for clicking interactive objects:
-    // Last two navigation positions + any camera interactive object positions
+    // Only last navigation position (cola and painting only clickable from last position)
     const allowedPositions = [
-        navigationPositions[navigationPositions.length - 2], // Second to last orb position [1.62, 0.75, 2.16]
-        navigationPositions[navigationPositions.length - 1], // Last orb position [3.13, 0.7, 0.04]
-        [-0.3, 0.10, -0.85], // Screen position
-        [1.66, 0.9, -1] // Painting position
+        navigationPositions[navigationPositions.length - 1] // Last orb position [3.13, 0.7, 0.04]
     ];
 
     interactiveManager = setupInteractiveObjects(scene, renderer.domElement, camera, interactiveConfigs, allowedPositions);
@@ -153,23 +199,28 @@ setTimeout(() => {
             cameraPosition: [-0.3, 0.10, -0.85], // Camera position when viewing screen
             moveDuration: 1.5,
             showVideo: true // Show video when camera reaches position
-        },
-        {
-            objectName: 'painting', // Name of painting object in GLTF
-            cameraPosition: [1.66, 0.9, -1], // Camera position when viewing painting
-            moveDuration: 1.5,
-            showVideo: false // Don't show video for painting
         }
     ];
 
-    // Callback to re-enable previous orb when camera moves to screen
-    const onScreenClick = () => {
+    // Callback to re-enable previous orb when camera moves away from interactive objects
+    const onCameraInteractiveClick = () => {
         if (orbManager && typeof orbManager.enablePreviousOrb === 'function') {
             // Get the previous camera position from the camera interactive manager
             const prevPos = cameraInteractiveManager.getPreviousCameraPosition();
             orbManager.enablePreviousOrb(prevPos);
         }
+        
+        // Hide About Me popup when navigating away from painting
+        const aboutPopup = document.getElementById('aboutPopup');
+        if (aboutPopup) {
+            aboutPopup.style.display = 'none';
+        }
     };
+
+    // Only show TV indicator from last position
+    const tvIndicatorPositions = [
+        navigationPositions[navigationPositions.length - 1] // Last orb position [3.13, 0.7, 0.04]
+    ];
 
     cameraInteractiveManager = setupCameraInteractiveObjects(
         scene, 
@@ -178,8 +229,12 @@ setTimeout(() => {
         cameraInteractiveConfigs,
         flashlight, // Pass flashlight to dim when at screen
         screenVideo, // Pass video controller
-        onScreenClick
+        onCameraInteractiveClick,
+        tvIndicatorPositions // Pass allowed positions for showing indicator
     );
+    
+    // Store globally for animation loop access
+    window.cameraInteractiveManager = cameraInteractiveManager;
 }, 2000); // Wait 2 seconds for model to load
 
 // Create and start animation loop

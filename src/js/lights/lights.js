@@ -112,6 +112,22 @@ export function setupLights(scene, camera, qualitySettings) {
         lights.mouse = new THREE.Vector2();
     }
 
+    // Mobile spotlight - static light that points at boisvert's position
+    if (qualitySettings.isMobile) {
+        lights.mobileSpotlight = new THREE.SpotLight(0xffffff, 30, 30, Math.PI / 12, 0.3, 1);
+        lights.mobileSpotlight.position.copy(camera.position);
+        if (qualitySettings.shadowsEnabled) {
+            lights.mobileSpotlight.castShadow = true;
+            lights.mobileSpotlight.shadow.mapSize.width = qualitySettings.shadowMapSize;
+            lights.mobileSpotlight.shadow.mapSize.height = qualitySettings.shadowMapSize;
+            lights.mobileSpotlight.shadow.camera.near = 0.5;
+            lights.mobileSpotlight.shadow.camera.far = 30;
+        }
+        lights.mobileSpotlight.map = createPentagonTexture(); // Add pentagonal shape
+        scene.add(lights.mobileSpotlight);
+        scene.add(lights.mobileSpotlight.target); // Add target to scene so we can move it
+    }
+
     // Light sphere helper (attached to center light)
     if (lights.centerLight) {
         const lightSphereGeo = new THREE.SphereGeometry(0.05, 16, 16);

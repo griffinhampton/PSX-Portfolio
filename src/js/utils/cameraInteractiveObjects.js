@@ -13,11 +13,42 @@ import { registerInteractiveManager } from './cursorManager.js';
  * @param {Function} onCameraMoveComplete - Callback when camera movement completes
  * @returns {Object} Manager object with cleanup methods
  */
-export function setupCameraInteractiveObjects(scene, domElement, camera, cameraInteractiveConfigs = [], flashlight = null, videoPlayer = null, onCameraMoveComplete = null) {
+export function setupCameraInteractiveObjects(scene, domElement, camera, cameraInteractiveConfigs = [], flashlight = null, videoPlayer = null, onCameraMoveComplete = null, allowedIndicatorPositions = []) {
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     const cameraInteractiveObjects = [];
     let previousCameraPosition = null;
+    const indicators = new Map(); // Map of object -> indicator element
+    
+    // Distance threshold for position matching (camera can be slightly off)
+    const POSITION_THRESHOLD = 0.5;
+    
+    /**
+     * Check if camera is at an allowed position for showing indicators
+     */
+    function isCameraAtAllowedPosition() {
+        if (allowedIndicatorPositions.length === 0) {
+            // If no restrictions, always show
+            return true;
+        }
+        
+        const camPos = camera.position;
+        
+        // Check if camera is near any of the allowed positions
+        for (const allowedPos of allowedIndicatorPositions) {
+            const distance = Math.sqrt(
+                Math.pow(camPos.x - allowedPos[0], 2) +
+                Math.pow(camPos.y - allowedPos[1], 2) +
+                Math.pow(camPos.z - allowedPos[2], 2)
+            );
+            
+            if (distance < POSITION_THRESHOLD) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
 
     /**
      * Make an object camera-interactive based on configuration
@@ -29,7 +60,23 @@ export function setupCameraInteractiveObjects(scene, domElement, camera, cameraI
     function setupCameraInteractiveObject(object, config) {
         object.userData.isCameraInteractive = true;
         object.userData.cameraConfig = config;
+        object.userData.hasBeenClicked = false; // Track if object has been clicked
         cameraInteractiveObjects.push(object);
+        
+        // Create indicator for this object
+        createIndicator(object);
+    }
+    
+    /**
+     * Create exclamation mark indicator for an object
+     */
+    function createIndicator(object) {
+        const indicator = document.createElement('div');
+        indicator.className = 'interactive-indicator';
+        indicator.textContent = '!';
+        indicator.style.display = 'none'; // Hidden by default
+        document.body.appendChild(indicator);
+        indicators.set(object, indicator);
     }
 
     /**
@@ -39,6 +86,13 @@ export function setupCameraInteractiveObjects(scene, domElement, camera, cameraI
         const config = object.userData.cameraConfig;
         const targetPos = config.cameraPosition;
         const moveDuration = config.moveDuration || 1.5;
+
+        // Mark as clicked and hide indicator
+        object.userData.hasBeenClicked = true;
+        const indicator = indicators.get(object);
+        if (indicator) {
+            indicator.style.display = 'none';
+        }
 
         // Store previous camera position
         previousCameraPosition = camera.position.clone();
@@ -139,11 +193,62 @@ export function setupCameraInteractiveObjects(scene, domElement, camera, cameraI
     // Add event listeners
     domElement.addEventListener('pointerdown', onPointerDown);
     domElement.addEventListener('touchstart', onPointerDown, { passive: false });
+    
+    /**
+     * Update indicator positions each frame
+     */
+    function update() {
+        cameraInteractiveObjects.forEach(obj => {
+            updateIndicator(obj);
+        });
+    }
+    
+    /**
+     * Update indicator position for an object
+     */
+    function updateIndicator(object) {
+        const indicator = indicators.get(object);
+        if (!indicator) return;
+        
+        // Only show indicator if:
+        // 1. Camera is at allowed position
+        // 2. Object hasn't been clicked yet
+        const isAtAllowedPos = isCameraAtAllowedPosition();
+        const shouldShow = isAtAllowedPos && !object.userData.hasBeenClicked;
+        
+        if (!shouldShow) {
+            indicator.style.display = 'none';
+            return;
+        }
+        
+        // Project 3D position to 2D screen space
+        const vector = new THREE.Vector3();
+        object.getWorldPosition(vector);
+        vector.project(camera);
+        
+        // Convert to pixel coordinates
+        const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+        
+        // Update indicator position
+        indicator.style.left = `${x}px`;
+        indicator.style.top = `${y}px`;
+        indicator.style.display = 'block';
+    }
 
     return {
+        update,
         dispose() {
             domElement.removeEventListener('pointerdown', onPointerDown);
             domElement.removeEventListener('touchstart', onPointerDown);
+            
+            // Clean up indicators
+            indicators.forEach((indicator) => {
+                if (indicator.parentNode) {
+                    indicator.parentNode.removeChild(indicator);
+                }
+            });
+            indicators.clear();
         },
         getPreviousCameraPosition() {
             return previousCameraPosition;
