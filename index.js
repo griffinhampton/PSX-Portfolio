@@ -5,7 +5,7 @@ import { setupPostProcessing } from "./src/js/postprocessing/postprocesses.js";
 import { setupLights } from "./src/js/lights/lights.js";
 import { setupParticles, setupParticleMouseListener } from "./src/js/particles/particles.js";
 import { setupModelLoader } from "./src/js/loaders/modelLoader.js";
-import { setupCameraControls } from "./src/js/controls/cameraControls.js";
+import { setupCameraControls, setupOrbNavigation } from "./src/js/controls/cameraControls.js";
 import { setupPositionTracker } from "./src/js/utils/positionTracker.js";
 import { setupResizeHandler } from "./src/js/utils/resizeHandler.js";
 import { createAnimationLoop } from "./src/js/animation/animationLoop.js";
@@ -44,6 +44,17 @@ const models = setupModelLoader(scene, allMeshes);
 // Set up camera controls
 const controls = setupCameraControls(camera, renderer.domElement);
 
+// Navigation path positions
+const navigationPositions = [
+    [-1.73, 1.2, 38],
+    [-1.7, 0.5, 26.67],
+    [-0.6, 0.5, 19.3],
+    [-0.87, 0.6, 15.78],
+    [-0.25, 0.65, 11.35],
+    [1.62, 0.75, 2.16],
+    [3.13, 0.8, 0.04]
+];
+
 // Set up particles
 const particles = setupParticles(scene, cross, qualitySettings);
 const particlesMesh = particles.particlesMesh;
@@ -60,6 +71,15 @@ if (qualitySettings.enableFlashlight && mouse) {
 // Set up window resize handler
 setupResizeHandler(camera, renderer, composer, pixelationPass, qualitySettings);
 
+// Set up orb navigation system (after lights are added so orbs are visible)
+let orbManager;
+try {
+    orbManager = setupOrbNavigation(scene, camera, renderer.domElement, navigationPositions);
+    console.log('Orb manager initialized successfully');
+} catch (error) {
+    console.error('Error setting up orb navigation:', error);
+}
+
 // Create and start animation loop
 const animate = createAnimationLoop({
     renderer,
@@ -69,7 +89,8 @@ const animate = createAnimationLoop({
     lights,
     particlesMesh,
     models,
-    updatePositionInfo
+    updatePositionInfo,
+    orbManager
 });
 
 animate();

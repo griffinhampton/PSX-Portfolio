@@ -27,7 +27,9 @@ export function setupScene(qualitySettings) {
     const near = 0.1;
     const far = 100;
     const camera = new THREE.PerspectiveCamera(fov, aspect, near, far);
-    camera.position.z = 1;
+    // Start at first navigation point
+    camera.position.set(-1.73, 1.2, 38);
+    console.log('Camera initialized at:', camera.position);
 
     // Set up scene
     const scene = new THREE.Scene();

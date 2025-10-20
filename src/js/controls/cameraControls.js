@@ -1,21 +1,251 @@
-import { OrbitControls } from "jsm/controls/OrbitControls.js";
+import gsap from 'gsap';
+import * as THREE from 'three';
 
 /**
- * Set up orbit controls for camera
+ * Set up first-person look controls for camera (click and drag to look around)
  * @param {THREE.Camera} camera - The camera to control
  * @param {HTMLElement} domElement - The renderer's DOM element
- * @returns {OrbitControls} The configured controls
+ * @returns {Object} controls object with update() method
  */
 export function setupCameraControls(camera, domElement) {
-    const controls = new OrbitControls(camera, domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = .05; // Lower value for more noticeable damping
-    controls.enablePan = false; // Disable panning - camera stays in fixed position
-    controls.mouseButtons = {
-        LEFT: 0, // THREE.MOUSE.ROTATE
-        MIDDLE: 1, // THREE.MOUSE.DOLLY
-        RIGHT: 0 // THREE.MOUSE.ROTATE
+    const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    const PI_2 = Math.PI / 2;
+    
+    let isPointerLocked = false;
+    let isDragging = false;
+    
+    const controls = {
+        isLocked: false,
+        
+        update() {
+            // No continuous update needed for this control style
+        }
     };
 
+    function onPointerMove(event) {
+        if (!isDragging) return;
+
+        const movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
+        const movementY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
+
+        euler.setFromQuaternion(camera.quaternion);
+
+        euler.y -= movementX * 0.002;
+        euler.x -= movementY * 0.002;
+
+        // Clamp vertical rotation to prevent flipping
+        euler.x = Math.max(-PI_2 + 0.1, Math.min(PI_2 - 0.1, euler.x));
+
+        camera.quaternion.setFromEuler(euler);
+    }
+
+    function onPointerDown(event) {
+        // Only start dragging on left mouse button
+        if (event.button === 0) {
+            isDragging = true;
+            domElement.style.cursor = 'grabbing';
+        }
+    }
+
+    function onPointerUp(event) {
+        if (event.button === 0) {
+            isDragging = false;
+            domElement.style.cursor = 'grab';
+        }
+    }
+
+    domElement.addEventListener('pointermove', onPointerMove);
+    domElement.addEventListener('pointerdown', onPointerDown);
+    domElement.addEventListener('pointerup', onPointerUp);
+    domElement.addEventListener('pointerleave', () => {
+        isDragging = false;
+        domElement.style.cursor = 'grab';
+    });
+    
+    domElement.style.cursor = 'grab';
+
     return controls;
+}
+
+/** 
+ * points starting at starting position
+ * [[-1.73,1.2,38],
+ * [[-1.7,.5,26.67],
+ * [-.6,.5,19.3],
+ * [-.87,.6,15.78],
+ * [-.25,.65,11.35],
+ * [1.62,.75,2.16],
+ * [3.13,.8,0.04]
+ * ]
+ * */
+
+/**
+ * Set up orb-based navigation system
+ * Orbs only load the nearest 2 on each side of the camera in the path array
+ * Clicking an orb moves the camera to that position and removes the orb
+ * @param {THREE.Scene} scene 
+ * @param {THREE.Camera} camera 
+ * @param {HTMLElement} domElement 
+ * @param {Array<Array<number>>} positions - Array of [x,y,z] positions for navigation
+ * @returns {Object} orbManager with update() method
+ */
+export function setupOrbNavigation(scene, camera, domElement, positions = []) {
+    console.log('Setting up orb navigation with', positions.length, 'positions');
+    console.log('Camera starting position:', camera.position);
+    
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const orbMeshes = [];
+    const group = new THREE.Group();
+    group.name = 'orbNavigationGroup';
+    scene.add(group);
+
+    // Track which position index we're currently at/closest to
+    let currentIndex = 0;
+
+    /**
+     * Create an orb mesh
+     */
+    function createOrbMesh(pos, idx) {
+        const geom = new THREE.SphereGeometry(0.15, 12, 12);
+        const mat = new THREE.MeshStandardMaterial({
+            color: 0x00ffff,
+            emissive: 0x0088ff,
+            metalness: 0.3,
+            roughness: 0.4,
+            transparent: true,
+            opacity: 0.85
+        });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.position.set(pos[0], pos[1], pos[2]);
+        mesh.userData = { 
+            index: idx, 
+            position: new THREE.Vector3(...pos),
+            isActive: false
+        };
+
+        // Pulse animation
+        gsap.to(mesh.scale, { 
+            x: 1.3, y: 1.3, z: 1.3, 
+            duration: 0.8, 
+            yoyo: true, 
+            repeat: -1, 
+            ease: 'sine.inOut' 
+        });
+
+        return mesh;
+    }
+
+    /**
+     * Find the closest position index to camera
+     */
+    function findClosestIndex() {
+        let minDist = Infinity;
+        let closestIdx = 0;
+        positions.forEach((pos, idx) => {
+            const dist = camera.position.distanceTo(new THREE.Vector3(...pos));
+            if (dist < minDist) {
+                minDist = dist;
+                closestIdx = idx;
+            }
+        });
+        return closestIdx;
+    }
+
+    /**
+     * Update which orbs should be visible
+     * Only show nearest 2 on each side of current position
+     */
+    function updateVisibleOrbs() {
+        currentIndex = findClosestIndex();
+        console.log('Current index:', currentIndex, 'at position:', positions[currentIndex]);
+        
+        // Clear existing orbs
+        group.children.forEach(child => {
+            gsap.killTweensOf(child.scale);
+        });
+        group.clear();
+        orbMeshes.length = 0;
+
+        // Calculate which indices to show (2 on each side)
+        const indicesToShow = [];
+        for (let offset = -2; offset <= 2; offset++) {
+            if (offset === 0) continue; // Don't show orb at current position
+            const idx = currentIndex + offset;
+            if (idx >= 0 && idx < positions.length) {
+                indicesToShow.push(idx);
+            }
+        }
+
+        console.log('Showing orbs at indices:', indicesToShow);
+
+        // Create and add orbs
+        indicesToShow.forEach(idx => {
+            const orb = createOrbMesh(positions[idx], idx);
+            orb.userData.isActive = true;
+            orbMeshes.push(orb);
+            group.add(orb);
+        });
+        
+        console.log('Added', group.children.length, 'orbs to scene');
+    }
+
+    /**
+     * Handle pointer click
+     */
+    function onPointerDown(event) {
+        const rect = domElement.getBoundingClientRect();
+        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(pointer, camera);
+        const intersects = raycaster.intersectObjects(group.children, false);
+        
+        if (intersects.length > 0) {
+            const picked = intersects[0].object;
+            const targetPos = picked.userData.position.clone();
+            const targetIdx = picked.userData.index;
+
+            // Remove the clicked orb immediately
+            gsap.killTweensOf(picked.scale);
+            group.remove(picked);
+
+            // Move camera to orb position
+            const duration = 1.5;
+            gsap.to(camera.position, {
+                x: targetPos.x,
+                y: targetPos.y,
+                z: targetPos.z,
+                duration,
+                ease: 'power2.inOut',
+                onComplete: () => {
+                    // Update current index and refresh visible orbs
+                    currentIndex = targetIdx;
+                    updateVisibleOrbs();
+                }
+            });
+        }
+    }
+
+    domElement.addEventListener('pointerdown', onPointerDown);
+
+    // Initialize with visible orbs
+    updateVisibleOrbs();
+
+    const orbManager = {
+        update() {
+            // Could add distance-based checks here if needed
+            // For now, orbs are managed on click completion
+        },
+        dispose() {
+            domElement.removeEventListener('pointerdown', onPointerDown);
+            group.children.forEach(child => {
+                gsap.killTweensOf(child.scale);
+            });
+            group.clear();
+            scene.remove(group);
+        }
+    };
+
+    return orbManager;
 }

@@ -20,7 +20,8 @@ export function createAnimationLoop({
     lights,
     particlesMesh,
     models,
-    updatePositionInfo
+    updatePositionInfo,
+    orbManager
 }) {
     const { flashlight, raycaster, mouse } = lights;
 
@@ -72,6 +73,11 @@ export function createAnimationLoop({
         
         // Update controls (required when damping is enabled)
         controls.update();
+        
+        // Update orb navigation system
+        if (orbManager && typeof orbManager.update === 'function') {
+            orbManager.update();
+        }
         
         // Render using composer for post-processing, or fallback to renderer
         if (composer) {
