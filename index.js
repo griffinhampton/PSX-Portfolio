@@ -47,10 +47,9 @@ const controls = setupCameraControls(camera, renderer.domElement, qualitySetting
 // Navigation path positions
 const navigationPositions = [
     [-1.73, 1.2, 38],
-    [-1.7, 0.5, 26.67],
-    [-0.6, 0.5, 19.3],
-    [-0.87, 0.6, 15.78],
-    [-0.25, 0.65, 11.35],
+    [-1.7, 0.5, 28.67],
+    [-1, 0, 20],
+    [-0.87, 0.6, 8.78],
     [1.62, 0.75, 2.16],
     [3.13, 0.8, 0.04]
 ];

@@ -263,6 +263,9 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
             const targetPos = picked.userData.position.clone();
             const targetIdx = picked.userData.index;
 
+            // Kill any ongoing camera animations to prevent glitches
+            gsap.killTweensOf(camera.position);
+            
             // Remove the clicked orb immediately
             gsap.killTweensOf(picked.scale);
             group.remove(picked);
