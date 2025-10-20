@@ -5,14 +5,18 @@ import * as THREE from 'three';
  * Set up first-person look controls for camera (click and drag to look around)
  * @param {THREE.Camera} camera - The camera to control
  * @param {HTMLElement} domElement - The renderer's DOM element
+ * @param {Object} qualitySettings - Quality settings for device-specific adjustments
  * @returns {Object} controls object with update() method
  */
-export function setupCameraControls(camera, domElement) {
+export function setupCameraControls(camera, domElement, qualitySettings = {}) {
     const euler = new THREE.Euler(0, 0, 0, 'YXZ');
     const PI_2 = Math.PI / 2;
     
     let isPointerLocked = false;
     let isDragging = false;
+    
+    // Mobile devices need faster rotation speed
+    const rotationSpeed = qualitySettings.isMobile ? 0.004 : 0.002;
     
     const controls = {
         isLocked: false,
@@ -30,8 +34,8 @@ export function setupCameraControls(camera, domElement) {
 
         euler.setFromQuaternion(camera.quaternion);
 
-        euler.y -= movementX * 0.002;
-        euler.x -= movementY * 0.002;
+        euler.y -= movementX * rotationSpeed;
+        euler.x -= movementY * rotationSpeed;
 
         // Clamp vertical rotation to prevent flipping
         euler.x = Math.max(-PI_2 + 0.1, Math.min(PI_2 - 0.1, euler.x));

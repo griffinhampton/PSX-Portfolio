@@ -42,7 +42,7 @@ const { allMeshes, updatePositionInfo } = positionTracker;
 const models = setupModelLoader(scene, allMeshes);
 
 // Set up camera controls
-const controls = setupCameraControls(camera, renderer.domElement);
+const controls = setupCameraControls(camera, renderer.domElement, qualitySettings);
 
 // Navigation path positions
 const navigationPositions = [
