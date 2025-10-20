@@ -1,0 +1,25 @@
+{
+  "name": "psx-portfolio-site",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PSX-Portfolio with (Vite + vanilla JS + three.js) ",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 5173",
+    "lint": "echo \"Add linter commands (eslint/stylelint)\" && exit 0",
+    "format": "echo \"Add formatter (prettier)\" && exit 0"
+  },
+  "keywords": [
+    "portfolio",
+    "vite",
+    "starter"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "vite": "^5.0.0",
+    "gsap": "^3.13.0"
+  }
+  
+}

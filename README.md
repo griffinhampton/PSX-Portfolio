@@ -1,4 +1,4 @@
-# PSX-Portfolio (Three.js)
+# Three.js Winter Cabin Scene
 
 A nighttime winter forest scene built with Three.js featuring a lit cabin, falling snow particles, atmospheric fog, and an interactive flashlight system.
 
@@ -34,6 +34,57 @@ Automatic mobile detection with performance optimizations:
 - EffectComposer for post-processing
 - Custom GLSL shaders for pixelation
 - Raycaster for 3D mouse interactions
+- Vite for development and building
+
+## Installation
+
+```bash
+npm install
+```
+
+## Development
+
+```bash
+npm run dev
+```
+
+Open your browser to `http://localhost:5173`
+
+## Build
+
+```bash
+npm run build
+```
+
+## Project Structure
+
+```
+.
+├── public/
+│   ├── index.html              # Main HTML file
+│   └── assets/
+│       ├── models/             # 3D models (GLTF)
+│       └── textures/           # Texture images
+├── src/
+│   ├── js/
+│   │   ├── main.js            # Main entry point
+│   │   ├── config.js          # Configuration constants
+│   │   ├── lights/
+│   │   │   ├── sceneLights.js # Scene lighting setup
+│   │   │   └── flashlight.js  # Flashlight spotlight
+│   │   ├── particles/
+│   │   │   └── snowParticles.js # Particle system
+│   │   ├── postprocessing/
+│   │   │   └── pixelation.js  # Post-processing effects
+│   │   └── utils/
+│   │       ├── mobileDetection.js # Mobile device detection
+│   │       └── positionTracker.js # 3D position tracking
+│   ├── cross.png              # Particle texture
+│   ├── env/                   # Environment models
+│   └── furniture/             # Furniture models
+├── package.json
+└── README.md
+```
 
 ## Scene Components
 
@@ -71,3 +122,7 @@ Works on all modern browsers supporting WebGL. Mobile devices automatically rece
 ## Performance Considerations
 
 Desktop systems should maintain 60fps with all features enabled. Mobile devices receive a significantly optimized version that reduces particle count by 95%, disables post-processing, shadows, and dynamic elements to ensure playable framerates on lower-powered devices.
+
+## License
+
+MIT
