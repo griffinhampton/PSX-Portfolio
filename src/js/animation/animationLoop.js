@@ -57,8 +57,8 @@ export function createAnimationLoop({
             }
         }
         
-        // Update falling snow particles - stop at last position
-        if (!qualitySettings.isMobile && particleArrays) {
+        // Update falling snow particles - stop at last position (works on both desktop and mobile)
+        if (particleArrays) {
             const shouldUpdateParticles = !orbManager || !orbManager.isAtLastPosition();
             updateParticles(particleArrays, undefined, shouldUpdateParticles);
         }
