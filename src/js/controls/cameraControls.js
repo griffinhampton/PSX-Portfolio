@@ -43,14 +43,12 @@ export function setupCameraControls(camera, domElement) {
         // Only start dragging on left mouse button
         if (event.button === 0) {
             isDragging = true;
-            domElement.style.cursor = 'grabbing';
         }
     }
 
     function onPointerUp(event) {
         if (event.button === 0) {
             isDragging = false;
-            domElement.style.cursor = 'grab';
         }
     }
 
@@ -59,10 +57,7 @@ export function setupCameraControls(camera, domElement) {
     domElement.addEventListener('pointerup', onPointerUp);
     domElement.addEventListener('pointerleave', () => {
         isDragging = false;
-        domElement.style.cursor = 'grab';
     });
-    
-    domElement.style.cursor = 'grab';
 
     return controls;
 }
@@ -87,9 +82,10 @@ export function setupCameraControls(camera, domElement) {
  * @param {THREE.Camera} camera 
  * @param {HTMLElement} domElement 
  * @param {Array<Array<number>>} positions - Array of [x,y,z] positions for navigation
+ * @param {THREE.SpotLight} flashlight - The flashlight to control (optional)
  * @returns {Object} orbManager with update() method
  */
-export function setupOrbNavigation(scene, camera, domElement, positions = []) {
+export function setupOrbNavigation(scene, camera, domElement, positions = [], flashlight = null) {
     console.log('Setting up orb navigation with', positions.length, 'positions');
     console.log('Camera starting position:', camera.position);
     
@@ -191,6 +187,25 @@ export function setupOrbNavigation(scene, camera, domElement, positions = []) {
     }
 
     /**
+     * Handle pointer movement for hover detection
+     */
+    function onPointerMoveOrb(event) {
+        const rect = domElement.getBoundingClientRect();
+        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(pointer, camera);
+        const intersects = raycaster.intersectObjects(group.children, false);
+        
+        // Change cursor based on hover state
+        if (intersects.length > 0) {
+            domElement.style.cursor = 'pointer';
+        } else {
+            domElement.style.cursor = 'default';
+        }
+    }
+
+    /**
      * Handle pointer click
      */
     function onPointerDown(event) {
@@ -222,11 +237,18 @@ export function setupOrbNavigation(scene, camera, domElement, positions = []) {
                     // Update current index and refresh visible orbs
                     currentIndex = targetIdx;
                     updateVisibleOrbs();
+                    
+                    // Turn off flashlight if at last position
+                    if (flashlight && targetIdx === positions.length - 1) {
+                        console.log('Reached last position - turning off flashlight');
+                        flashlight.intensity = 0;
+                    }
                 }
             });
         }
     }
 
+    domElement.addEventListener('pointermove', onPointerMoveOrb);
     domElement.addEventListener('pointerdown', onPointerDown);
 
     // Initialize with visible orbs

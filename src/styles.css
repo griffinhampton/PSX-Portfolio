@@ -1,0 +1,18 @@
+body {
+  margin: 0;
+  overscroll-behavior: none;
+}
+
+#positionInfo {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  color: white;
+  font-family: monospace;
+  font-size: 14px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 10px;
+  border-radius: 5px;
+  z-index: 1000;
+  pointer-events: none;
+}
