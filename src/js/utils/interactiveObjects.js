@@ -26,6 +26,8 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
     
     // Distance threshold for position matching (camera can be slightly off)
     const POSITION_THRESHOLD = 0.5;
+    // Optional: enable occlusion checks for indicators (disabled by default)
+    const ENABLE_INDICATOR_OCCLUSION = false;
     
     /**
      * Check if camera is at an allowed position
@@ -201,6 +203,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                     if (popup) {
                         popup.style.display = 'block';
                     }
+                    try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_cola'); } catch(e) {}
                 }
 
                 // Show Resume popup for paper
@@ -209,6 +212,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                     if (popup) {
                         popup.style.display = 'block';
                     }
+                    try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_paper'); } catch(e) {}
                     // Set Resume.webp as paper texture
                     object.traverse((child) => {
                         if (child.isMesh && child.material) {
@@ -230,7 +234,17 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                     if (popup) {
                         popup.style.display = 'block';
                     }
+                    try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_painting'); } catch(e) {}
                 }
+                
+                // Check composite: if all three clicked achievements + watched_screen unlocked, award master_interactor
+                try {
+                    const ach = window.achievements;
+                    if (ach && typeof ach.isUnlocked === 'function') {
+                        const all = ach.isUnlocked('clicked_paper') && ach.isUnlocked('clicked_painting') && ach.isUnlocked('clicked_cola') && ach.isUnlocked('watched_screen');
+                        if (all) { try { ach.unlock('master_interactor'); } catch(e) {} }
+                    }
+                } catch(e) {}
             }
         });
 
@@ -313,6 +327,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
      * Handle pointer events
      */
     function onPointerDown(event) {
+        // Handle pointerdown for interactive objects (allow clicks even if controls report dragging)
         // Check if camera is at an allowed position
         if (!isCameraAtAllowedPosition()) {
             return; // Don't process clicks if camera is not at allowed position
@@ -460,10 +475,59 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
             return;
         }
         
-        // Project 3D position to 2D screen space
-        const vector = new THREE.Vector3();
-        object.getWorldPosition(vector);
+        // Project 3D world position to 2D screen space
+        const worldPos = new THREE.Vector3();
+        object.getWorldPosition(worldPos);
+
+        // Only show indicator for objects that are in front of the camera
+        const toObject = new THREE.Vector3();
+        toObject.subVectors(worldPos, camera.position).normalize();
+        const camDir = new THREE.Vector3();
+        camera.getWorldDirection(camDir);
+        if (toObject.dot(camDir) <= 0) {
+            // Object is behind the camera - hide indicator
+            indicator.style.display = 'none';
+            return;
+        }
+
+        // Now project the world position to normalized device coordinates
+        const vector = worldPos.clone();
         vector.project(camera);
+
+        // Optional: occlusion test (is object visible from camera?)
+        if (ENABLE_INDICATOR_OCCLUSION || window.__ENABLE_INDICATOR_OCCLUSION) {
+            const dir = new THREE.Vector3().subVectors(worldPos, camera.position).normalize();
+            raycaster.set(camera.position, dir);
+            const distanceToObj = camera.position.distanceTo(worldPos);
+            // Intersect with the whole scene to detect occluders
+            const hits = raycaster.intersectObjects(scene.children, true);
+            if (hits && hits.length > 0) {
+                const first = hits[0];
+                if (first.distance < distanceToObj - 0.05 && first.object !== object) {
+                    // Something is blocking the view of the object
+                    if (window.__DEBUG_INDICATORS) console.debug('[indicator] occluded:', object.name, 'hit=', first.object.name, 'hitDist=', first.distance, 'objDist=', distanceToObj);
+                    indicator.style.display = 'none';
+                    return;
+                }
+            }
+        }
+
+        // Debug logging to help track mirrored/duplicate indicators
+        if (window.__DEBUG_INDICATORS) {
+            try {
+                const dot = toObject.dot(camDir);
+                const screenX = (vector.x * 0.5 + 0.5) * window.innerWidth;
+                const screenY = (vector.y * -0.5 + 0.5) * window.innerHeight;
+                console.debug('[indicator] show', { name: object.name, uuid: object.uuid, worldPos: worldPos.toArray(), dot, screen: { x: screenX, y: screenY }, hasBeenClicked: !!object.userData.hasBeenClicked });
+                // Log parent chain for context
+                let p = object.parent;
+                const chain = [];
+                while (p) { chain.push(p.name || p.type); p = p.parent; }
+                console.debug('[indicator] parentChain', chain.join(' -> '));
+            } catch (err) {
+                console.warn('[indicator] debug error', err);
+            }
+        }
         
         // Convert to pixel coordinates
         const x = (vector.x * 0.5 + 0.5) * window.innerWidth;

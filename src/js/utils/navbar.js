@@ -46,6 +46,14 @@ export function setupNavbar(camera, navigationPositions, orbManager, flashlight)
         });
     }
 
+    // Expose helper globally so other modules (e.g. Boisvert click) can reuse the same
+    // navigation behavior without depending on module return values.
+    try {
+        window.navigateToPosition = navigateToPosition;
+    } catch (e) {
+        // ignore if we cannot set global
+    }
+
     // Back to Start - Navigate to first position
     if (navButtons.start) {
         navButtons.start.addEventListener('click', () => {

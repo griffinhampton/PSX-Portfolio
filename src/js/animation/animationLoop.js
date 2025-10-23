@@ -25,7 +25,8 @@ export function createAnimationLoop({
     updatePositionInfo,
     orbManager,
     getInteractiveManager,
-    youtubeScreen
+    youtubeScreen,
+    navigationPositions
 }) {
     const { flashlight, raycaster, mouse, mobileSpotlight } = lights;
 
@@ -108,6 +109,28 @@ export function createAnimationLoop({
         if (window.boisvertTeleporter && typeof window.boisvertTeleporter.update === 'function') {
             window.boisvertTeleporter.update();
         }
+
+        // Detect arrival at the last base navigation position (so achievements work even when user navigates via navbar)
+        try {
+            if (navigationPositions && navigationPositions.length) {
+                const lastIdx = navigationPositions.length - 1;
+                const lastPos = navigationPositions[lastIdx];
+                if (lastPos && lastPos.length >= 3) {
+                    const dx = window.camera.position.x - lastPos[0];
+                    const dy = window.camera.position.y - lastPos[1];
+                    const dz = window.camera.position.z - lastPos[2];
+                    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                    const ARRIVAL_THRESHOLD = 0.6; // match other thresholds used elsewhere
+                    // Use a persisted flag on the animate function to avoid repeated events
+                    if (dist <= ARRIVAL_THRESHOLD && !animate._wasAtLastPosition) {
+                        animate._wasAtLastPosition = true;
+                        try { window.dispatchEvent(new CustomEvent('orb:arrived', { detail: { index: lastIdx } })); } catch (e) {}
+                    } else if (dist > ARRIVAL_THRESHOLD) {
+                        animate._wasAtLastPosition = false;
+                    }
+                }
+            }
+        } catch (e) {}
         
         // Render using composer for post-processing, or fallback to renderer
         if (composer) {

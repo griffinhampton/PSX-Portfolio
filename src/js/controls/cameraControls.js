@@ -15,40 +15,121 @@ export function setupCameraControls(camera, domElement, qualitySettings = {}) {
     
     let isPointerLocked = false;
     let isDragging = false;
+    let shouldDisableLookFn = null;
+    let isClamping = false;
+    let clampBaseYaw = null;
+    let clampYawRange = null;
+    let clampPitchRange = null;
     
-    // Mobile devices need faster rotation speed
-    const rotationSpeed = qualitySettings.isMobile ? 0.004 : 0.002;
+    let rotationSpeed = qualitySettings.isMobile ? 0.004 : 0.002;
     
     const controls = {
         isLocked: false,
-        
+        isUserDragging() {
+            return !!isDragging;
+        },
+        setDragSpeed(v) {
+            const n = Number(v);
+            if (!Number.isNaN(n) && n > 0) rotationSpeed = n;
+        },
+        getDragSpeed() {
+            return rotationSpeed;
+        },
+        setShouldDisableLookFn(fn) {
+            shouldDisableLookFn = fn;
+        },
         update() {
             // No continuous update needed for this control style
         }
     };
 
     function onPointerMove(event) {
-        // Only handle camera rotation if dragging
         if (isDragging) {
+            if (window.__DEBUG_CAMERA_CONTROLS) console.debug('[cameraControls] onPointerMove - isDragging', isDragging);
+            
+            let disableInfo = null;
+            if (typeof shouldDisableLookFn === 'function') {
+                try {
+                    disableInfo = shouldDisableLookFn();
+                } catch (err) {
+                    disableInfo = null;
+                }
+            }
+
+            if (disableInfo === true) {
+                if (window.__DEBUG_CAMERA_CONTROLS) console.debug('[cameraControls] predicate -> fully disabled');
+                isDragging = false;
+                return;
+            }
+
+            if (disableInfo && typeof disableInfo === 'object') {
+                if (!isClamping) {
+                    const qeuler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+                    clampBaseYaw = qeuler.y;
+                    clampYawRange = typeof disableInfo.clampYaw === 'number' ? disableInfo.clampYaw : Math.PI / 2;
+                    clampPitchRange = typeof disableInfo.clampPitch === 'number' ? disableInfo.clampPitch : null;
+                    isClamping = true;
+                }
+            } else {
+                isClamping = false;
+                clampBaseYaw = null;
+                clampYawRange = null;
+                clampPitchRange = null;
+            }
+            
             const movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
             const movementY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
 
             euler.setFromQuaternion(camera.quaternion);
-
             euler.y -= movementX * rotationSpeed;
             euler.x -= movementY * rotationSpeed;
-
-            // Clamp vertical rotation to prevent flipping
             euler.x = Math.max(-PI_2 + 0.1, Math.min(PI_2 - 0.1, euler.x));
+
+            if (isClamping && clampBaseYaw !== null && typeof clampYawRange === 'number') {
+                if (window.__DEBUG_CAMERA_CONTROLS) console.debug('[cameraControls] clamping active, baseYaw=', clampBaseYaw, 'range=', clampYawRange);
+                const minYaw = clampBaseYaw - clampYawRange;
+                const maxYaw = clampBaseYaw + clampYawRange;
+                let yaw = euler.y;
+                while (yaw - clampBaseYaw > Math.PI) yaw -= Math.PI * 2;
+                while (yaw - clampBaseYaw < -Math.PI) yaw += Math.PI * 2;
+                yaw = Math.max(minYaw, Math.min(maxYaw, yaw));
+                euler.y = yaw;
+            }
 
             camera.quaternion.setFromEuler(euler);
         }
-        // Don't return early - allow event to propagate to other handlers
     }
 
     function onPointerDown(event) {
-        // Only start dragging on left mouse button
         if (event.button === 0) {
+            if (window.__DEBUG_CAMERA_CONTROLS) console.debug('[cameraControls] onPointerDown');
+            
+            if (typeof shouldDisableLookFn === 'function') {
+                try {
+                    const res = shouldDisableLookFn();
+                    if (window.__DEBUG_CAMERA_CONTROLS) console.debug('[cameraControls] predicate result:', res);
+                    
+                    if (res === true) {
+                        isDragging = false;
+                        return;
+                    }
+                    
+                    if (res && typeof res === 'object') {
+                        const qeuler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+                        clampBaseYaw = qeuler.y;
+                        clampYawRange = typeof res.clampYaw === 'number' ? res.clampYaw : Math.PI / 2;
+                        clampPitchRange = typeof res.clampPitch === 'number' ? res.clampPitch : null;
+                        isClamping = true;
+                    } else {
+                        isClamping = false;
+                        clampBaseYaw = null;
+                        clampYawRange = null;
+                        clampPitchRange = null;
+                    }
+                } catch (err) {
+                    // predicate error - ignore and allow dragging
+                }
+            }
             isDragging = true;
         }
     }
@@ -69,22 +150,8 @@ export function setupCameraControls(camera, domElement, qualitySettings = {}) {
     return controls;
 }
 
-/** 
- * points starting at starting position
- * [[-1.73,1.2,38],
- * [[-1.7,.5,26.67],
- * [-.6,.5,19.3],
- * [-.87,.6,15.78],
- * [-.25,.65,11.35],
- * [1.62,.75,2.16],
- * [3.13,.8,0.04]
- * ]
- * */
-
 /**
  * Set up orb-based navigation system
- * Orbs only load the nearest 2 on each side of the camera in the path array
- * Clicking an orb moves the camera to that position and removes the orb
  * @param {THREE.Scene} scene 
  * @param {THREE.Camera} camera 
  * @param {HTMLElement} domElement 
@@ -92,9 +159,10 @@ export function setupCameraControls(camera, domElement, qualitySettings = {}) {
  * @param {THREE.SpotLight} flashlight - The flashlight to control (optional)
  * @param {Object} qualitySettings - Quality settings for orb sizing (optional)
  * @param {Array<Array<number>>} excludePositions - Positions where orbs should never appear (optional)
+ * @param {number} basePositionsLength - Original positions length before DLC additions (optional)
  * @returns {Object} orbManager with update() method
  */
-export function setupOrbNavigation(scene, camera, domElement, positions = [], flashlight = null, qualitySettings = {}, excludePositions = []) {
+export function setupOrbNavigation(scene, camera, domElement, positions = [], flashlight = null, qualitySettings = {}, excludePositions = [], basePositionsLength = null) {
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
     const orbMeshes = [];
@@ -102,16 +170,9 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
     group.name = 'orbNavigationGroup';
     scene.add(group);
 
-    // Track which position index we're currently at/closest to
     let currentIndex = 0;
-    
-    // Distance threshold for position exclusion (only exclude if very close)
-    // Reduced to 0.5 to only exclude positions that are essentially the same as camera-interactive positions
     const EXCLUDE_THRESHOLD = 0.5;
     
-    /**
-     * Check if a position should be excluded (too close to a camera interactive object)
-     */
     function shouldExcludePosition(pos) {
         for (const excludePos of excludePositions) {
             const distance = Math.sqrt(
@@ -127,13 +188,9 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
         return false;
     }
     
-    // Get orb size from quality settings (larger on mobile)
     const orbSize = qualitySettings.orbSize || 0.2;
     const raycastThreshold = qualitySettings.orbRaycastThreshold || 0.3;
 
-    /**
-     * Create an orb mesh
-     */
     function createOrbMesh(pos, idx) {
         const geom = new THREE.SphereGeometry(orbSize, 12, 12);
         const mat = new THREE.MeshStandardMaterial({
@@ -152,7 +209,6 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
             isActive: false
         };
 
-        // Pulse animation
         gsap.to(mesh.scale, { 
             x: 1.3, y: 1.3, z: 1.3, 
             duration: 0.8, 
@@ -164,9 +220,6 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
         return mesh;
     }
 
-    /**
-     * Find the closest position index to camera
-     */
     function findClosestIndex() {
         let minDist = Infinity;
         let closestIdx = 0;
@@ -180,9 +233,6 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
         return closestIdx;
     }
 
-    /**
-     * Check if camera is at a camera-interactive position (not in navigation path)
-     */
     function isAtCameraInteractivePosition() {
         const camPos = camera.position;
         for (const excludePos of excludePositions) {
@@ -192,21 +242,15 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
                 Math.pow(camPos.z - excludePos[2], 2)
             );
             
-            if (distance < 0.5) { // Very close to a camera-interactive position
+            if (distance < EXCLUDE_THRESHOLD) {
                 return true;
             }
         }
         return false;
     }
 
-    /**
-     * Update which orbs should be visible
-     * Only show nearest 2 on each side of current position
-     */
-    function updateVisibleOrbs() {
-        // Don't update orbs if camera is at a camera-interactive position
-        // This prevents orbs from disappearing when clicking on painting/screen
-        if (isAtCameraInteractivePosition()) {
+    function updateVisibleOrbs(skipIfAtInteractive = true) {
+        if (skipIfAtInteractive && isAtCameraInteractivePosition()) {
             return;
         }
         
@@ -219,15 +263,27 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
         group.clear();
         orbMeshes.length = 0;
 
-        // Calculate which indices to show (2 on each side)
         const indicesToShow = [];
-        for (let offset = -2; offset <= 2; offset++) {
-            if (offset === 0) continue; // Don't show orb at current position
-            const idx = currentIndex + offset;
-            if (idx >= 0 && idx < positions.length) {
-                // Check if this position should be excluded
-                if (!shouldExcludePosition(positions[idx])) {
-                    indicesToShow.push(idx);
+
+        // If basePositionsLength is provided and the camera is at/after that index,
+        // we're in the ADDITIONAL_NAVIGATION_POSITIONS area — show all orbs at once
+        const inAdditionalArea = (typeof basePositionsLength === 'number' && basePositionsLength >= 0 && currentIndex >= basePositionsLength);
+
+        if (inAdditionalArea) {
+            // Add every position except the current one, respecting exclusion rules
+            for (let idx = 0; idx < positions.length; idx++) {
+                if (idx === currentIndex) continue;
+                if (!shouldExcludePosition(positions[idx])) indicesToShow.push(idx);
+            }
+        } else {
+            // Default behavior: show nearest 2 on each side
+            for (let offset = -2; offset <= 2; offset++) {
+                if (offset === 0) continue;
+                const idx = currentIndex + offset;
+                if (idx >= 0 && idx < positions.length) {
+                    if (!shouldExcludePosition(positions[idx])) {
+                        indicesToShow.push(idx);
+                    }
                 }
             }
         }
@@ -241,25 +297,17 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
         });
     }
 
-
-
-    /**
-     * Get pointer position from event (works for both mouse and touch)
-     */
     function getPointerPosition(event) {
         const rect = domElement.getBoundingClientRect();
         let clientX, clientY;
         
         if (event.touches && event.touches.length > 0) {
-            // Touch event
             clientX = event.touches[0].clientX;
             clientY = event.touches[0].clientY;
         } else if (event.changedTouches && event.changedTouches.length > 0) {
-            // Touch end event
             clientX = event.changedTouches[0].clientX;
             clientY = event.changedTouches[0].clientY;
         } else {
-            // Mouse event
             clientX = event.clientX;
             clientY = event.clientY;
         }
@@ -270,16 +318,12 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
         };
     }
 
-    /**
-     * Handle pointer click or touch
-     */
     function onPointerDown(event) {
         const pos = getPointerPosition(event);
         pointer.x = pos.x;
         pointer.y = pos.y;
 
         raycaster.setFromCamera(pointer, camera);
-        // Increase threshold for better hit detection on mobile
         raycaster.params.Points.threshold = raycastThreshold;
         const intersects = raycaster.intersectObjects(group.children, false);
         
@@ -288,14 +332,10 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
             const targetPos = picked.userData.position.clone();
             const targetIdx = picked.userData.index;
 
-            // Kill any ongoing camera animations to prevent glitches
             gsap.killTweensOf(camera.position);
-            
-            // Remove the clicked orb immediately
             gsap.killTweensOf(picked.scale);
             group.remove(picked);
 
-            // Move camera to orb position
             const duration = 1.5;
             gsap.to(camera.position, {
                 x: targetPos.x,
@@ -304,76 +344,80 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
                 duration,
                 ease: 'power2.inOut',
                 onComplete: () => {
-                    // Update current index and refresh visible orbs
                     currentIndex = targetIdx;
                     updateVisibleOrbs();
                     
-                    // Dim flashlight at last position, normal intensity elsewhere
                     if (flashlight) {
-                        if (targetIdx === positions.length - 1) {
-                            flashlight.intensity = 5; // Dimmed intensity
+                        const effectiveLastIdx = (typeof basePositionsLength === 'number' && basePositionsLength > 0) 
+                            ? basePositionsLength - 1 
+                            : positions.length - 1;
+                        
+                        if (targetIdx === effectiveLastIdx) {
+                            flashlight.intensity = 5;
                         } else {
-                            flashlight.intensity = 30; // Normal intensity
+                            flashlight.intensity = 30;
                         }
                     }
+                    
+                    try {
+                        window.dispatchEvent(new CustomEvent('orb:arrived', { detail: { index: targetIdx } }));
+                    } catch (e) {}
+
+                    try {
+                        if (picked && picked.userData && picked.userData.isPreviousOrb) {
+                            if (window.boisvertTeleporter && typeof window.boisvertTeleporter.lookAtBoisvert === 'function') {
+                                window.boisvertTeleporter.lookAtBoisvert();
+                            }
+                        }
+                    } catch (e) {}
                 }
             });
         }
     }
 
-    // Register with cursor manager for hover detection (only on desktop)
     if (!qualitySettings.isMobile) {
         registerInteractiveManager(() => group.children);
     }
 
     domElement.addEventListener('pointerdown', onPointerDown);
-    
-    // Add touch event listeners for mobile support
     domElement.addEventListener('touchstart', onPointerDown, { passive: false });
     domElement.addEventListener('touchend', onPointerDown, { passive: false });
 
-    // Initialize with visible orbs
     updateVisibleOrbs();
 
     const orbManager = {
         update() {
-            // Update visible orbs when called externally (e.g., from navbar navigation)
             updateVisibleOrbs();
         },
         getCurrentIndex() {
             return currentIndex;
         },
         isAtLastPosition() {
-            return currentIndex === positions.length - 1;
+            const effectiveLastIdx = (typeof basePositionsLength === 'number' && basePositionsLength > 0) 
+                ? basePositionsLength - 1 
+                : positions.length - 1;
+            return currentIndex === effectiveLastIdx;
         },
         enablePreviousOrb(previousPosition = null) {
-            // When user clicks screen, create orb at the position they came from
-            // This allows them to return from the screen view
+            updateVisibleOrbs(false);
             
             if (previousPosition) {
-                // Check if this position should be excluded
                 const posArray = [previousPosition.x, previousPosition.y, previousPosition.z];
                 if (shouldExcludePosition(posArray)) {
-                    return; // Don't create orb at excluded position
+                    return;
                 }
                 
-                // Use the actual previous camera position if provided
-                const orb = createOrbMesh(
-                    posArray, 
-                    currentIndex // Use current index as this orb returns to where we were
-                );
+                const orb = createOrbMesh(posArray, currentIndex);
                 orb.userData.isActive = true;
-                orb.userData.isPreviousOrb = true; // Mark this as a "go back" orb
+                orb.userData.isPreviousOrb = true;
                 orbMeshes.push(orb);
                 group.add(orb);
             } else if (currentIndex > 0) {
-                // Fallback to previous position in path array
                 const prevIdx = currentIndex - 1;
                 const prevPos = positions[prevIdx];
                 
-                // Check if this position should be excluded
                 if (shouldExcludePosition(prevPos)) {
-                    return; // Don't create orb at excluded position
+                    return;
                 }
                 
                 const orb = createOrbMesh(prevPos, prevIdx);

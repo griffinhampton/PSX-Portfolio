@@ -119,6 +119,7 @@ export function setupCameraInteractiveObjects(scene, domElement, camera, cameraI
                 }
                 
                 if (onCameraMoveComplete) {
+                    if (window.__DEBUG_SCREEN) console.debug('[cameraInteractive] onCameraMoveComplete callback invoking', object.name, config);
                     onCameraMoveComplete(object, config);
                 }
             }
@@ -129,6 +130,7 @@ export function setupCameraInteractiveObjects(scene, domElement, camera, cameraI
      * Handle pointer events
      */
     function onPointerDown(event) {
+        // Handle pointerdown for camera-interactive objects (allow clicks regardless of drag state)
         // Get pointer position
         const rect = domElement.getBoundingClientRect();
         let clientX, clientY;
@@ -220,15 +222,50 @@ export function setupCameraInteractiveObjects(scene, domElement, camera, cameraI
             indicator.style.display = 'none';
             return;
         }
-        
-        // Project 3D position to 2D screen space
-        const vector = new THREE.Vector3();
-        object.getWorldPosition(vector);
+        // Project 3D world position to 2D screen space
+        const worldPos = new THREE.Vector3();
+        object.getWorldPosition(worldPos);
+
+        // Only show indicator for objects that are in front of the camera
+        const toObject = new THREE.Vector3();
+        toObject.subVectors(worldPos, camera.position).normalize();
+        const camDir = new THREE.Vector3();
+        camera.getWorldDirection(camDir);
+        if (toObject.dot(camDir) <= 0) {
+            // Object is behind the camera - hide indicator
+            indicator.style.display = 'none';
+            return;
+        }
+
+        // Project to NDC
+        const vector = worldPos.clone();
         vector.project(camera);
+
+        // Optional occlusion test (enable via window.__ENABLE_INDICATOR_OCCLUSION)
+        if (window.__ENABLE_INDICATOR_OCCLUSION) {
+            const dir = new THREE.Vector3().subVectors(worldPos, camera.position).normalize();
+            raycaster.set(camera.position, dir);
+            const distanceToObj = camera.position.distanceTo(worldPos);
+            const hits = raycaster.intersectObjects(scene.children, true);
+            if (hits && hits.length > 0) {
+                const first = hits[0];
+                if (first.distance < distanceToObj - 0.05 && first.object !== object) {
+                    indicator.style.display = 'none';
+                    return;
+                }
+            }
+        }
+
+        // Debug logging
+        if (window.__DEBUG_INDICATORS) {
+            const screenX = (vector.x * 0.5 + 0.5) * window.innerWidth;
+            const screenY = (vector.y * -0.5 + 0.5) * window.innerHeight;
+            console.debug('[cameraIndicator] show', { name: object.name, uuid: object.uuid, worldPos: worldPos.toArray(), screen: { x: screenX, y: screenY } });
+        }
         
-        // Convert to pixel coordinates
-        const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-        const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+    // Convert to pixel coordinates
+    const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
         
         // Update indicator position
         indicator.style.left = `${x}px`;

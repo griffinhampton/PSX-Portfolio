@@ -157,6 +157,8 @@ function showWelcomePopup() {
         
         setTimeout(() => {
             welcomePopup.style.display = 'none';
+            // Emit an event so other parts of the app know the user entered
+            try { window.dispatchEvent(new CustomEvent('welcome:entered')); } catch (e) {}
         }, 300);
     });
 }
