@@ -270,10 +270,15 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
     // NOTE: Only enable the "show all orbs" behavior on mobile devices.
     const inAdditionalArea = (typeof basePositionsLength === 'number' && basePositionsLength >= 0 && currentIndex >= basePositionsLength && !!qualitySettings.isMobile);
 
+        // compute the index of the first additional position when available
+        const firstAdditionalIdx = (typeof basePositionsLength === 'number' && basePositionsLength >= 0) ? basePositionsLength : null;
+
         if (inAdditionalArea) {
             // Add every position except the current one, respecting exclusion rules
             for (let idx = 0; idx < positions.length; idx++) {
                 if (idx === currentIndex) continue;
+                // Never include the very first additional position (hide it everywhere)
+                if (firstAdditionalIdx !== null && idx === firstAdditionalIdx) continue;
                 // If this is an "additional" position and we're not on mobile, skip it
                 if (typeof basePositionsLength === 'number' && basePositionsLength >= 0 && idx >= basePositionsLength && !qualitySettings.isMobile) continue;
                 if (!shouldExcludePosition(positions[idx])) indicesToShow.push(idx);
@@ -284,6 +289,8 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
                 if (offset === 0) continue;
                 const idx = currentIndex + offset;
                 if (idx >= 0 && idx < positions.length) {
+                    // Never include the very first additional position (hide it everywhere)
+                    if (firstAdditionalIdx !== null && idx === firstAdditionalIdx) continue;
                     // Skip additional (DLC) positions on non-mobile platforms
                     if (typeof basePositionsLength === 'number' && basePositionsLength >= 0 && idx >= basePositionsLength && !qualitySettings.isMobile) continue;
                     if (!shouldExcludePosition(positions[idx])) {
@@ -405,20 +412,33 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
         },
         enablePreviousOrb(previousPosition = null) {
             updateVisibleOrbs(false);
-            
+
+            // compute the index of the first additional position when available
+            const firstAdditionalIdx = (typeof basePositionsLength === 'number' && basePositionsLength >= 0) ? basePositionsLength : null;
+
             if (previousPosition) {
                 const posArray = [previousPosition.x, previousPosition.y, previousPosition.z];
                 if (shouldExcludePosition(posArray)) {
                     return;
                 }
 
+                // Try to resolve the index of the provided previousPosition within positions
+                let resolvedIdx = positions.findIndex(p => p[0] === posArray[0] && p[1] === posArray[1] && p[2] === posArray[2]);
+                if (resolvedIdx === -1) {
+                    // fallback to currentIndex if we can't find it
+                    resolvedIdx = currentIndex;
+                }
+
+                // Never create an orb for the very first additional position
+                if (firstAdditionalIdx !== null && resolvedIdx === firstAdditionalIdx) return;
+
                 // If this previous position falls into the ADDITIONAL_NAVIGATION_POSITIONS range
                 // and we're not on mobile, don't create the orb.
-                if (typeof basePositionsLength === 'number' && basePositionsLength >= 0 && currentIndex >= basePositionsLength && !qualitySettings.isMobile) {
+                if (typeof basePositionsLength === 'number' && basePositionsLength >= 0 && resolvedIdx >= basePositionsLength && !qualitySettings.isMobile) {
                     return;
                 }
 
-                const orb = createOrbMesh(posArray, currentIndex);
+                const orb = createOrbMesh(posArray, resolvedIdx);
                 orb.userData.isActive = true;
                 orb.userData.isPreviousOrb = true;
                 orbMeshes.push(orb);
@@ -426,7 +446,10 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
             } else if (currentIndex > 0) {
                 const prevIdx = currentIndex - 1;
                 const prevPos = positions[prevIdx];
-                
+
+                // Never create the very first additional position
+                if (firstAdditionalIdx !== null && prevIdx === firstAdditionalIdx) return;
+
                 // Skip if this prev position is excluded or is an additional (DLC) position on non-mobile
                 if (shouldExcludePosition(prevPos)) {
                     return;

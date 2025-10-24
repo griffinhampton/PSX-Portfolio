@@ -146,10 +146,7 @@ function isCameraNearPosition(pos, threshold = 0.6) {
 if (controls && typeof controls.setShouldDisableLookFn === 'function') {
     controls.setShouldDisableLookFn(() => {
         const targetPos = navigationPositions[DISABLE_LOOK_INDEX];
-        // If we're near the target position, return an object instructing clamp mode
         if (isCameraNearPosition(targetPos, 0.9)) {
-            // clampYaw is the half-angle allowed from current facing direction (radians)
-            //  allow about 90 degrees left/right (Math.PI/2) would still allow full behind; reduce to ~75deg
             const clampYaw = Math.PI * 0.35; // ~63 degrees each side
             const clampPitch = Math.PI * 0.4; // allow typical pitch range
             return { clampYaw, clampPitch };
@@ -165,10 +162,7 @@ initializeCursorManager(renderer.domElement, camera);
 // Setup mute button
 setupMuteButton();
 
-// Navigation path positions
-// Keep the original base positions here. If you want to add DLC positions, put them in
-// `ADDITIONAL_NAVIGATION_POSITIONS` below — the code will create an extended `navigationPositions` array
-// used by orb navigation, navbar, teleporter, etc.
+
 const BASE_NAVIGATION_POSITIONS = [
     [-1.73, 1.2, 38],
     [-1.7, 0.5, 32],
@@ -263,14 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 const ADDITIONAL_NAVIGATION_POSITIONS = [
-    [4, -8, 10],
-    [3.6, -8, 3],
-    [3.6, -8, -10],
-    [-2, -8, -10.5],
-    [11, -8, -10],
-    [12, -8, 3],
-    [-6.5, -8, 3],
-    [-11, -8, -6.9]
+    [4, -8, 10]
 ];
 
 // Expose additional positions on window for modules that expect a global reference
