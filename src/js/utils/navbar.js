@@ -10,10 +10,7 @@ import gsap from 'gsap';
 export function setupNavbar(camera, navigationPositions, orbManager, flashlight) {
     const navButtons = {
         start: document.getElementById('navBackToStart'),
-        cabin: document.getElementById('navToCabin'),
-        about: document.getElementById('navAbout'),
-        projects: document.getElementById('navProjects'),
-        contact: document.getElementById('navContact')
+        cabin: document.getElementById('navToCabin')
     };
 
     /**
@@ -70,29 +67,7 @@ export function setupNavbar(camera, navigationPositions, orbManager, flashlight)
         });
     }
 
-    // About - Navigate to second to last position (placeholder)
-    if (navButtons.about) {
-        navButtons.about.addEventListener('click', () => {
-            const aboutPosition = navigationPositions[navigationPositions.length - 2];
-            navigateToPosition(aboutPosition, 30);
-        });
-    }
 
-    // Projects - Navigate to middle position (placeholder)
-    if (navButtons.projects) {
-        navButtons.projects.addEventListener('click', () => {
-            const projectsPosition = navigationPositions[Math.floor(navigationPositions.length / 2)];
-            navigateToPosition(projectsPosition, 30);
-        });
-    }
-
-    // Contact - Navigate to position 3 (placeholder)
-    if (navButtons.contact) {
-        navButtons.contact.addEventListener('click', () => {
-            const contactPosition = navigationPositions[2];
-            navigateToPosition(contactPosition, 30);
-        });
-    }
 
     return {
         navigateToPosition,

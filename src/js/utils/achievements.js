@@ -109,6 +109,22 @@ function ensureContainers() {
     if (!toastContainer) {
         toastContainer = document.createElement('div');
         toastContainer.id = 'achievements-toast-container';
+        // Position and sizing differ between mobile and desktop to avoid covering UI
+        try {
+            const isMobile = (typeof navigator !== 'undefined') && (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
+            toastContainer.style.position = 'fixed';
+            toastContainer.style.zIndex = '99999';
+            toastContainer.style.pointerEvents = 'none';
+            // Place toasts in the top-right on both platforms to avoid covering bottom UI
+            // Mobile gets slightly tighter inset
+            if (isMobile) {
+                toastContainer.style.top = '12px';
+                toastContainer.style.right = '12px';
+            } else {
+                toastContainer.style.top = '20px';
+                toastContainer.style.right = '20px';
+            }
+        } catch (e) {}
         document.body.appendChild(toastContainer);
     }
     if (!container) {
@@ -172,6 +188,36 @@ function showToast(achievement) {
     const toast = document.createElement('div');
     toast.className = 'achievement-toast';
     toast.innerHTML = `<strong>${achievement.title}</strong><div class="achievement-toast-desc">${achievement.description || ''}</div>`;
+    // Apply device-specific sizing so mobile toasts are small and don't cover controls
+    try {
+        const isMobile = (typeof navigator !== 'undefined') && (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
+        if (isMobile) {
+            // Slightly larger mobile toast for readability without covering controls
+            toast.style.width = '280px';
+            toast.style.fontSize = '15px';
+            toast.style.padding = '14px 16px';
+            toast.style.borderRadius = '10px';
+            toast.style.background = 'rgba(0,0,0,0.92)';
+            toast.style.color = '#fff';
+            toast.style.boxShadow = '0 8px 20px rgba(0,0,0,0.4)';
+            toast.style.marginBottom = '10px';
+            toast.style.pointerEvents = 'auto';
+        } else {
+            // Larger desktop toast
+            toast.style.width = '420px';
+            toast.style.fontSize = '17px';
+            toast.style.padding = '18px 20px';
+            toast.style.borderRadius = '12px';
+            toast.style.background = 'rgba(0,0,0,0.96)';
+            toast.style.color = '#fff';
+            toast.style.boxShadow = '0 10px 30px rgba(0,0,0,0.45)';
+            toast.style.marginBottom = '12px';
+            toast.style.pointerEvents = 'auto';
+        }
+        // Ensure consistent visual layout
+        toast.style.display = 'block';
+        toast.style.overflow = 'hidden';
+    } catch (e) { /* ignore styling errors */ }
     toastContainer.appendChild(toast);
     // entrance
     requestAnimationFrame(() => toast.classList.add('visible'));
