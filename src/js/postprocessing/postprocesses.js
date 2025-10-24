@@ -28,7 +28,7 @@ export function setupPostProcessing(renderer, scene, camera, qualitySettings = {
         uniforms: {
             tDiffuse: { value: null },
             resolution: { value: new THREE.Vector2() },
-            pixelSize: { value: qualitySettings.pixelSize || 3 } // Use quality setting or default to 3
+            pixelSize: { value: qualitySettings.pixelSize || 2 } // Use quality setting or default to 3
         },
         vertexShader: `
             varying vec2 vUv;

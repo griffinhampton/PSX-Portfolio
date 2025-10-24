@@ -200,6 +200,20 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 // Show LinkedIn popup for cola bottle
                 if (config.objectName === 'cola') {
                     const popup = document.getElementById('linkedinPopup');
+                    try {
+                        // Reuse a cached audio element if available to avoid re-allocating repeatedly
+                        if (!window.__colaAudio) {
+                            window.__colaAudio = new Audio('src/sounds/cola-drink.mp3');
+                            window.__colaAudio.preload = 'auto';
+                        }
+                        const playPromise = window.__colaAudio.play();
+                        if (playPromise && typeof playPromise.then === 'function') {
+                            playPromise.catch(() => { /* ignore autoplay rejection */ });
+                        }
+                    } catch (audioErr) {
+                        // ignore audio errors
+                        console.warn('[interactiveObjects] cola audio failed to play', audioErr);
+                    }
                     if (popup) {
                         popup.style.display = 'block';
                     }

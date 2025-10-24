@@ -270,7 +270,6 @@ export function initAchievements(list = []) {
     };
     // Expose controller for debugging
     try { window.achievements = controller; } catch (e) {}
-    console.log('[achievements] initialized, unlocked:', Array.from(unlockedSet));
     return controller;
 }
 
@@ -290,7 +289,6 @@ function unlockAchievement(id) {
     try {
         meta.hasNew = true;
         saveMeta();
-    console.log('[achievements] unlockAchievement set meta.hasNew=true for', id);
         updateToggleIcon();
     } catch (e) {}
     // emit global event
@@ -319,8 +317,8 @@ export function registerDefaultAchievements() {
         { id: 'clicked_painting', title: 'Art Critic', description: 'You inspected the painting.' },
         { id: 'clicked_cola', title: 'Is This a Fallout Reference?', description: 'You inspected the LinkedIn Cola bottle.' },
         { id: 'watched_screen', title: 'Film Critic', description: 'You played the video on the TV.' },
-        { id: 'visited_first_dlc', title: 'New Horizons', description: 'You traveled to the first area of the DLC.' },
-        { id: 'clicked_boisvert', title: 'Hello, Room', description: 'You clicked on Boisvert.' },
+        { id: 'visited_first_dlc', title: 'Where am I..?', description: 'You traveled to the first area of the DLC.' },
+        { id: 'clicked_boisvert', title: 'Hello, Room', description: 'You clicked on the entity.' },
         { id: 'master_interactor', title: 'Sleuth', description: 'You investigated all interactive objects.' }
     ];
     for (const a of defaults) achievementsMap.set(a.id, a);

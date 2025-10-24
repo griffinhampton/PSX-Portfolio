@@ -261,8 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {}
 });
 
-// Add your extra positions here (DLC / extension). Example format:
-// const ADDITIONAL_NAVIGATION_POSITIONS = [[x,y,z], [x,y,z]];
+
 const ADDITIONAL_NAVIGATION_POSITIONS = [
     [4, -8, 10],
     [3.6, -8, 3],
@@ -462,7 +461,18 @@ function renderAchievementsPopup() {
 // Open popup handler: ensure popup content is up to date
 const achToggle = document.getElementById('achievementsToggle');
 if (achToggle) {
+    function removeAchievementBadge() {
+        try {
+            const existing = document.getElementById('achievementBadge');
+            if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+            // restore pointer-events if we changed it
+            achToggle.style.pointerEvents = '';
+        } catch (e) {}
+    }
+
     achToggle.addEventListener('click', () => {
+        // Opening the achievements panel should clear the new-achievement badge
+        removeAchievementBadge();
         setTimeout(renderAchievementsPopup, 50); // slight delay to ensure display
     });
 }
@@ -471,7 +481,42 @@ if (achToggle) {
 
 // Keep popup updated when an achievement is unlocked
 window.addEventListener('achievement:unlocked', () => {
-    renderAchievementsPopup();
+    // Update the achievements popup and show a red exclamation badge on the toggle
+    try { renderAchievementsPopup(); } catch (e) {}
+
+    try {
+        const btn = document.getElementById('achievementsToggle');
+        if (btn) {
+            // Ensure the button is positioned so the absolute badge sits correctly
+            if (getComputedStyle(btn).position === 'static') btn.style.position = 'relative';
+
+            // If badge already exists, don't recreate
+            if (!document.getElementById('achievementBadge')) {
+                const span = document.createElement('span');
+                span.id = 'achievementBadge';
+                span.textContent = '!';
+                span.setAttribute('aria-hidden', 'true');
+                // Inline styles to avoid needing CSS edits
+                span.style.position = 'absolute';
+                span.style.top = '4px';
+                span.style.right = '6px';
+                span.style.background = '#e53935';
+                span.style.color = 'white';
+                span.style.borderRadius = '50%';
+                span.style.width = '18px';
+                span.style.height = '18px';
+                span.style.display = 'flex';
+                span.style.alignItems = 'center';
+                span.style.justifyContent = 'center';
+                span.style.fontSize = '12px';
+                span.style.fontWeight = '700';
+                span.style.lineHeight = '18px';
+                span.style.zIndex = '1000';
+                span.style.pointerEvents = 'none';
+                btn.appendChild(span);
+            }
+        }
+    } catch (e) { /* ignore */ }
 });
 
 // Setup Boisvert teleporter (wait for model to load)

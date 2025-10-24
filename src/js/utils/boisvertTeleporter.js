@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import gsap from 'gsap';
+import MovementPad from './movementPad.js';
 
 /**
  * Setup Boisvert model teleportation system
@@ -46,6 +47,8 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     let walkBounds = null; // { minX, maxX, minY, maxY, minZ, maxZ }
     let walkSpeed = 2.5; // units per second
     let walkKeys = { forward: 0, back: 0, left: 0, right: 0 };
+    // Analog movement for mobile movement pad (range approximately -2..2 from pad)
+    let analogMove = { x: 0, z: 0 };
     let pendingWalkTarget = null; // THREE.Vector3 to enable walk after navigation completes
     const isMobileDevice = (typeof navigator !== 'undefined') && (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
     // Collision helpers
@@ -53,6 +56,46 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     const walkRaycaster = new THREE.Raycaster();
     const walkPlayerRadius = 0.35; // approximate player radius in world units
     const walkCollisionMargin = 0.05;
+    let movementPad = null;
+    // Helper to create/destroy movement pad (allows dev forcing on desktop)
+    function createMovementPad() {
+        if (movementPad) return;
+        try {
+            movementPad = new MovementPad(document.body);
+
+            const onMove = (ev) => {
+                const d = ev.detail || {};
+                // Invert X so pushing right yields positive x
+                analogMove.x = (typeof d.deltaX === 'number') ? -d.deltaX : 0;
+                // Y: pushing up should move forward, so keep sign
+                analogMove.z = (typeof d.deltaY === 'number') ? d.deltaY : 0;
+            };
+
+            const onStop = () => { analogMove.x = 0; analogMove.z = 0; };
+
+            movementPad.padElement.addEventListener('move', onMove);
+            movementPad.padElement.addEventListener('stopMove', onStop);
+
+            movementPad._cleanup = () => {
+                try { movementPad.padElement.removeEventListener('move', onMove); } catch (e) {}
+                try { movementPad.padElement.removeEventListener('stopMove', onStop); } catch (e) {}
+                try { movementPad.dispose(); } catch (e) {}
+                movementPad = null;
+                analogMove.x = 0; analogMove.z = 0;
+            };
+        } catch (e) {
+            console.warn('[walkMode] failed to create movement pad', e);
+            movementPad = null;
+        }
+    }
+
+    function destroyMovementPad() {
+        if (!movementPad) return;
+        try {
+            if (movementPad._cleanup) movementPad._cleanup();
+        } catch (e) {}
+        movementPad = null;
+    }
 
     function computeBoundsFromCenter(center, size) {
         const halfW = (size && size[0]) ? size[0] / 2 : 2;
@@ -69,7 +112,8 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     }
 
     function enableWalkMode(centerVec3) {
-        if (isMobileDevice) return; // Never enable on mobile
+        // We support walk mode on desktop (WASD) and on mobile via a movement pad.
+        // Do not early-return for mobile; instead create the movement pad below.
         if (walkModeActive) return;
 
         // Allow overrides via global configuration: window.ADDITIONAL_NAVIGATION_BOUNDS = { center: [x,y,z], size: [w,h,d] }
@@ -139,6 +183,11 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             walkCollisionWalls = null;
         }
 
+        // If on mobile or dev-forced, create a movement pad and wire it to produce analogMove.x / analogMove.z
+        if (isMobileDevice || !!window.__FORCE_MOVEMENT_PAD) {
+            createMovementPad();
+        }
+
         // key handlers
         function onKeyDown(e) {
             if (e.repeat) return;
@@ -180,6 +229,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             window.removeEventListener('keyup', onKeyUp);
             try { window.__walkModeActive = false; } catch (e) {}
             walkCollisionWalls = null;
+            destroyMovementPad();
         };
     }
 
@@ -191,6 +241,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
         walkBounds = null;
         pendingWalkTarget = null;
         walkCollisionWalls = null;
+        destroyMovementPad();
     }
 
     
@@ -347,6 +398,9 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                 console.log(`Camera reached position ${i} (distance: ${distance.toFixed(2)})`);
                 currentTargetIndex = i;
                 teleportToPosition(navPos, i);
+                // If we arrive at any of the base navigation positions, ensure walk mode is disabled.
+                // Walk mode is only intended for the DLC/additional area, so disable on return to base positions.
+                try { disableWalkMode(); } catch (e) { /* ignore */ }
                 return;
             }
         }
@@ -418,8 +472,11 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             forward.y = 0; forward.normalize();
             const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
-            const moveZ = (walkKeys.forward - walkKeys.back);
-            const moveX = (walkKeys.right - walkKeys.left);
+            // Support analog movement from mobile pad (analogMove.x/z in approx -2..2 range)
+            const analogScale = 0.5; // map -2..2 -> -1..1
+            const useAnalog = Math.abs(analogMove.x) > 0.001 || Math.abs(analogMove.z) > 0.001;
+            const moveZ = useAnalog ? (analogMove.z * analogScale) : (walkKeys.forward - walkKeys.back);
+            const moveX = useAnalog ? (analogMove.x * analogScale) : (walkKeys.right - walkKeys.left);
 
             if (moveZ !== 0 || moveX !== 0) {
                 const move = new THREE.Vector3();
@@ -521,11 +578,26 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     
     // Initial teleport to first position
     if (navigationPositions.length > 0) {
-        console.log('Performing initial teleport to first position...');
         teleportToPosition(navigationPositions[0], 0);
         currentTargetIndex = 0;
         lastCameraPosition.copy(camera.position);
     }
+
+    // Developer helper: toggle forced movement pad on desktop for testing
+    try {
+        window.toggleMovementPadForDev = function() {
+            window.__FORCE_MOVEMENT_PAD = !window.__FORCE_MOVEMENT_PAD;
+            console.log('[dev] __FORCE_MOVEMENT_PAD ->', !!window.__FORCE_MOVEMENT_PAD);
+            if (walkModeActive) {
+                if (window.__FORCE_MOVEMENT_PAD) {
+                    createMovementPad();
+                } else {
+                    destroyMovementPad();
+                }
+            }
+            return !!window.__FORCE_MOVEMENT_PAD;
+        };
+    } catch (e) {}
 
     // Add pointerdown listener to boisvert model - clicking it will navigate to first DLC position
     try {
@@ -549,7 +621,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                     raycaster.setFromCamera(pointer, camera);
                     const intersects = raycaster.intersectObject(boisvertModel, true);
                     if (intersects && intersects.length > 0) {
-                        // Boisvert was clicked
+                        try { window.achievements && window.achievements.unlock && window.achievements.unlock('visited_first_dlc'); } catch(e) {}
                         onBoisvertClick(ev);
                     }
                 } catch (e) {
