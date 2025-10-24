@@ -48,6 +48,11 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     let walkKeys = { forward: 0, back: 0, left: 0, right: 0 };
     let pendingWalkTarget = null; // THREE.Vector3 to enable walk after navigation completes
     const isMobileDevice = (typeof navigator !== 'undefined') && (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
+    // Collision helpers
+    let walkCollisionWalls = null; // mesh/group to raycast against
+    const walkRaycaster = new THREE.Raycaster();
+    const walkPlayerRadius = 0.35; // approximate player radius in world units
+    const walkCollisionMargin = 0.05;
 
     function computeBoundsFromCenter(center, size) {
         const halfW = (size && size[0]) ? size[0] / 2 : 2;
@@ -80,7 +85,59 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             size = boundsConfig.size;
         }
 
-        walkBounds = computeBoundsFromCenter(center, size);
+        // Prefer to compute bounds from the scene geometry if available
+        let floorMesh = null;
+        let wallsMesh = null;
+        try {
+            // Prefer exact names, fallback to name includes
+            floorMesh = scene.getObjectByName('backrooms-floor') || scene.getObjectByName('backrooms-floor-alt') || null;
+            if (!floorMesh) {
+                scene.traverse(o => { if (!floorMesh && o.name && o.name.toLowerCase().includes('backrooms-floor')) floorMesh = o; });
+            }
+            wallsMesh = scene.getObjectByName('backrooms-walls') || null;
+            if (!wallsMesh) {
+                scene.traverse(o => { if (!wallsMesh && o.name && o.name.toLowerCase().includes('backrooms-walls')) wallsMesh = o; });
+            }
+        } catch (e) {
+            floorMesh = null; wallsMesh = null;
+        }
+
+        if (floorMesh) {
+            // Use floor bounding box to derive X/Z extents and floor Y
+            const box = new THREE.Box3().setFromObject(floorMesh);
+            const min = box.min;
+            const max = box.max;
+            // Slight inset so player doesn't clip into walls
+            const inset = 0.05;
+            walkBounds = {
+                minX: min.x + inset,
+                maxX: max.x - inset,
+                minY: min.y + 0.1,
+                maxY: max.y + 2.0,
+                minZ: min.z + inset,
+                maxZ: max.z - inset
+            };
+            // prefer walls mesh for collision tests if available
+            walkCollisionWalls = wallsMesh || floorMesh;
+        } else if (wallsMesh) {
+            const box = new THREE.Box3().setFromObject(wallsMesh);
+            const min = box.min;
+            const max = box.max;
+            const inset = 0.05;
+            walkBounds = {
+                minX: min.x + inset,
+                maxX: max.x - inset,
+                minY: min.y + 0.1,
+                maxY: max.y + 2.0,
+                minZ: min.z + inset,
+                maxZ: max.z - inset
+            };
+            walkCollisionWalls = wallsMesh;
+        } else {
+            // Fallback to center/size
+            walkBounds = computeBoundsFromCenter(center, size);
+            walkCollisionWalls = null;
+        }
 
         // key handlers
         function onKeyDown(e) {
@@ -122,6 +179,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             window.removeEventListener('keydown', onKeyDown);
             window.removeEventListener('keyup', onKeyUp);
             try { window.__walkModeActive = false; } catch (e) {}
+            walkCollisionWalls = null;
         };
     }
 
@@ -132,6 +190,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
         if (enableWalkMode._cleanup) try { enableWalkMode._cleanup(); } catch (e) {}
         walkBounds = null;
         pendingWalkTarget = null;
+        walkCollisionWalls = null;
     }
 
     
@@ -367,15 +426,76 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                 move.addScaledVector(forward, moveZ * walkSpeed * dt);
                 move.addScaledVector(right, moveX * walkSpeed * dt);
 
-                camera.position.add(move);
-                // clamp inside bounds
-                camera.position.x = Math.max(walkBounds.minX, Math.min(walkBounds.maxX, camera.position.x));
-                camera.position.y = Math.max(walkBounds.minY, Math.min(walkBounds.maxY, camera.position.y));
-                camera.position.z = Math.max(walkBounds.minZ, Math.min(walkBounds.maxZ, camera.position.z));
+                // Collision check: multi-directional raycasts around intended movement
+                let blocked = false;
+                if (walkCollisionWalls) {
+                    // We'll attempt to slide along walls instead of fully blocking movement.
+                    // Define a set of directions to probe around the player (8 cardinal/diagonal directions).
+                    const angles = [0, Math.PI/4, Math.PI/2, 3*Math.PI/4, Math.PI, -3*Math.PI/4, -Math.PI/2, -Math.PI/4];
 
-                // If controls targeting exists, update target too
-                if (controls && controls.target && typeof controls.target.copy === 'function') {
-                    controls.target.copy(camera.position);
+                    // Use a lowered origin to approximate player center for raycasts
+                    const origin = camera.position.clone();
+                    origin.y = camera.position.y - 0.5;
+
+                    // For each probe direction, if there's a wall within the player radius,
+                    // only remove the component of the movement that points into the wall (i.e. project
+                    // the move vector to be parallel to the wall normal). This allows sliding.
+                    for (let angle of angles) {
+                        const checkDir = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle)).normalize();
+
+                        walkRaycaster.set(origin, checkDir);
+                        // Short probe distance: just slightly beyond the player radius
+                        walkRaycaster.far = walkPlayerRadius + 0.1;
+
+                        try {
+                            const hits = walkRaycaster.intersectObject(walkCollisionWalls, true);
+                            if (hits && hits.length > 0 && typeof hits[0].distance === 'number') {
+                                if (hits[0].distance < walkPlayerRadius) {
+                                    // Wall detected in this direction. Only remove the component of the move
+                                    // that points into this wall (i.e. when the player is moving TOWARD it).
+                                    const moveDirCheck = move.clone();
+                                    moveDirCheck.y = 0;
+                                    const moveLen = moveDirCheck.length();
+                                    if (moveLen < 1e-6) continue; // no meaningful movement
+                                    moveDirCheck.normalize();
+
+                                    const dotProduct = moveDirCheck.dot(checkDir);
+                                    // If dot > 0.1 we are moving toward this probe direction (wall)
+                                    if (dotProduct > 0.1) {
+                                        const wallNormal = checkDir.clone();
+                                        const parallelMove = move.clone().sub(wallNormal.multiplyScalar(move.dot(wallNormal)));
+                                        move.copy(parallelMove);
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            // If raycast fails, be conservative and block movement
+                            blocked = true;
+                            break;
+                        }
+                    }
+
+                    // After attempting to slide, if the remaining move is negligible, consider it blocked
+                    if (move.length() < 0.001) {
+                        blocked = true;
+                    } else {
+                        blocked = false;
+                    }
+                }
+
+                if (!blocked) {
+                    camera.position.add(move);
+                    // clamp inside bounds
+                    camera.position.x = Math.max(walkBounds.minX, Math.min(walkBounds.maxX, camera.position.x));
+                    camera.position.y = Math.max(walkBounds.minY, Math.min(walkBounds.maxY, camera.position.y));
+                    camera.position.z = Math.max(walkBounds.minZ, Math.min(walkBounds.maxZ, camera.position.z));
+
+                    // If controls targeting exists, update target too
+                    if (controls && controls.target && typeof controls.target.copy === 'function') {
+                        controls.target.copy(camera.position);
+                    }
+                } else {
+                    // blocked: optionally could try sliding along wall or small step, for now do nothing
                 }
             }
 

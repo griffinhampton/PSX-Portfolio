@@ -265,14 +265,17 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
 
         const indicesToShow = [];
 
-        // If basePositionsLength is provided and the camera is at/after that index,
-        // we're in the ADDITIONAL_NAVIGATION_POSITIONS area — show all orbs at once
-        const inAdditionalArea = (typeof basePositionsLength === 'number' && basePositionsLength >= 0 && currentIndex >= basePositionsLength);
+    // If basePositionsLength is provided and the camera is at/after that index,
+    // we're in the ADDITIONAL_NAVIGATION_POSITIONS area — show all orbs at once
+    // NOTE: Only enable the "show all orbs" behavior on mobile devices.
+    const inAdditionalArea = (typeof basePositionsLength === 'number' && basePositionsLength >= 0 && currentIndex >= basePositionsLength && !!qualitySettings.isMobile);
 
         if (inAdditionalArea) {
             // Add every position except the current one, respecting exclusion rules
             for (let idx = 0; idx < positions.length; idx++) {
                 if (idx === currentIndex) continue;
+                // If this is an "additional" position and we're not on mobile, skip it
+                if (typeof basePositionsLength === 'number' && basePositionsLength >= 0 && idx >= basePositionsLength && !qualitySettings.isMobile) continue;
                 if (!shouldExcludePosition(positions[idx])) indicesToShow.push(idx);
             }
         } else {
@@ -281,6 +284,8 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
                 if (offset === 0) continue;
                 const idx = currentIndex + offset;
                 if (idx >= 0 && idx < positions.length) {
+                    // Skip additional (DLC) positions on non-mobile platforms
+                    if (typeof basePositionsLength === 'number' && basePositionsLength >= 0 && idx >= basePositionsLength && !qualitySettings.isMobile) continue;
                     if (!shouldExcludePosition(positions[idx])) {
                         indicesToShow.push(idx);
                     }
@@ -406,7 +411,13 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
                 if (shouldExcludePosition(posArray)) {
                     return;
                 }
-                
+
+                // If this previous position falls into the ADDITIONAL_NAVIGATION_POSITIONS range
+                // and we're not on mobile, don't create the orb.
+                if (typeof basePositionsLength === 'number' && basePositionsLength >= 0 && currentIndex >= basePositionsLength && !qualitySettings.isMobile) {
+                    return;
+                }
+
                 const orb = createOrbMesh(posArray, currentIndex);
                 orb.userData.isActive = true;
                 orb.userData.isPreviousOrb = true;
@@ -416,10 +427,14 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
                 const prevIdx = currentIndex - 1;
                 const prevPos = positions[prevIdx];
                 
+                // Skip if this prev position is excluded or is an additional (DLC) position on non-mobile
                 if (shouldExcludePosition(prevPos)) {
                     return;
                 }
-                
+                if (typeof basePositionsLength === 'number' && basePositionsLength >= 0 && prevIdx >= basePositionsLength && !qualitySettings.isMobile) {
+                    return;
+                }
+
                 const orb = createOrbMesh(prevPos, prevIdx);
                 orb.userData.isActive = true;
                 orbMeshes.push(orb);
