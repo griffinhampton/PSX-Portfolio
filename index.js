@@ -7,6 +7,7 @@ import { setupLights } from "./src/js/lights/lights.js";
 import { setupParticles, setupParticleMouseListener, updateParticles } from "./src/js/particles/particles.js";
 import { setupModelLoader } from "./src/js/loaders/modelLoader.js";
 import { setupCameraControls, setupOrbNavigation } from "./src/js/controls/cameraControls.js";
+import RotationPad from "./src/js/utils/RotationPad.js";
 import { setupPositionTracker } from "./src/js/utils/positionTracker.js";
 import { setupResizeHandler } from "./src/js/utils/resizeHandler.js";
 import { createAnimationLoop } from "./src/js/animation/animationLoop.js";
@@ -158,6 +159,37 @@ if (controls && typeof controls.setShouldDisableLookFn === 'function') {
 
 // Initialize unified cursor manager
 initializeCursorManager(renderer.domElement, camera);
+
+// Rotation pad: mobile-only on-screen control to adjust camera look (yaw/pitch)
+let rotationPad = null;
+if (qualitySettings.isMobile) {
+    try {
+        rotationPad = new RotationPad(document.body);
+        // Sensitivity tuning: how strongly pad deltas affect rotation
+        const ROTATION_PAD_SENSITIVITY = 0.06; // adjust to taste
+        rotationPad.padElement.addEventListener('YawPitch', (ev) => {
+            try {
+                const d = ev && ev.detail ? ev.detail : null;
+                if (!d) return;
+                const dx = (typeof d.deltaX === 'number') ? d.deltaX : 0;
+                const dy = (typeof d.deltaY === 'number') ? d.deltaY : 0;
+
+                // Apply to camera quaternion similar to pointer-drag controls
+                const PI_2 = Math.PI / 2;
+                const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+                euler.y -= dx * ROTATION_PAD_SENSITIVITY;
+                euler.x -= dy * ROTATION_PAD_SENSITIVITY;
+                euler.x = Math.max(-PI_2 + 0.1, Math.min(PI_2 - 0.1, euler.x));
+                camera.quaternion.setFromEuler(euler);
+
+                // Keep controls.target roughly aligned with camera for systems that use it
+                try { if (controls && controls.target && typeof controls.target.copy === 'function') controls.target.copy(camera.position); } catch (e) {}
+            } catch (e) { /* ignore pad errors */ }
+        });
+    } catch (e) {
+        console.warn('[RotationPad] failed to initialize', e);
+    }
+}
 
 
 
