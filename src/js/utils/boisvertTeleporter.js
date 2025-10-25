@@ -192,6 +192,69 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     const CHASE_STOP_DISTANCE = 0.6;
     // increase lose distance so collision triggers easier
     const GAME_LOSE_DISTANCE = 1.6;
+    // require the player to be within lose distance for this many ms before triggering loss
+    const LOSE_HOLD_MS = 700; // 700ms
+    // If either the player or Boisvert are suddenly teleported/jumped by more than
+    // this distance during an active chase, treat it as an immediate death.
+    const RESET_JUMP_THRESHOLD = 1.5; // units
+
+    /**
+     * Centralized loss handler used for immediate loss triggers.
+     * Marks loss, shows overlay, resets positions and stops chase behavior.
+     */
+    function performLoss(reason) {
+        try {
+            if (update._loseTriggered) return;
+            update._loseTriggered = true;
+            if (window && window.achievements && typeof window.achievements.unlock === 'function') {
+                try { window.achievements.unlock('game_lost'); } catch (e) {}
+            }
+            try { showDeathOverlay(); } catch (e) {}
+
+            // Reset player and Boisvert positions to the first additional navigation point (or fallback)
+            try {
+                let additional = null;
+                try {
+                    additional = (typeof window !== 'undefined' && Array.isArray(window.ADDITIONAL_NAVIGATION_POSITIONS)) ? window.ADDITIONAL_NAVIGATION_POSITIONS : null;
+                } catch (e) { additional = null; }
+                if (!additional && scene && scene.userData && Array.isArray(scene.userData.additionalNavigationPositions)) {
+                    additional = scene.userData.additionalNavigationPositions;
+                }
+
+                let dest = null;
+                if (additional && additional.length > 0) dest = additional[0];
+                else if (navigationPositions && navigationPositions.length > 0) dest = navigationPositions[0];
+
+                if (dest && dest.length >= 3) {
+                    try {
+                        camera.position.set(dest[0], dest[1], dest[2]);
+                        if (controls && controls.target && typeof controls.target.copy === 'function') {
+                            controls.target.copy(camera.position);
+                        }
+                    } catch (e) {}
+                }
+
+                // reset Boisvert to spawn pos index 0 if available
+                try {
+                    if (boisvertSpawnPositions && boisvertSpawnPositions.length > 0) {
+                        const s = boisvertSpawnPositions[0];
+                        if (s && s.length >= 3) {
+                            try { boisvertModel.position.set(s[0], s[1], s[2]); } catch (e) {}
+                        }
+                        if (boisvertZRotations && Array.isArray(boisvertZRotations) && boisvertZRotations[0] !== undefined) {
+                            try { boisvertModel.rotation.set(Math.PI / 2, 0, boisvertZRotations[0]); } catch (e) {}
+                        }
+                    }
+                } catch (e) {}
+            } catch (e) {}
+
+            // stop further chase behavior
+            try { update._chaseMoveDir = null; } catch (e) {}
+            try { update._chaseActive = false; } catch (e) {}
+        } catch (e) {
+            // swallow
+        }
+    }
 
     function _chaseUpdate(now) {
         if (!boisvertModel || !update || !update._chaseActive) return;
@@ -217,70 +280,87 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
 
             // If Boisvert gets very close to the player, trigger the 'game_lost' achievement
             if (dist <= GAME_LOSE_DISTANCE) {
-                if (!update._loseTriggered) {
-                    update._loseTriggered = true;
-                    try {
-                        if (window && window.achievements && typeof window.achievements.unlock === 'function') {
-                            window.achievements.unlock('game_lost');
-                        }
-                    } catch (e) {}
-                    try { showDeathOverlay(); } catch (e) {}
-
-                    // Reset player and Boisvert positions to the first additional navigation point (or fallback)
-                    try {
-                        let additional = null;
+                // Start or continue a pending lose timer; only trigger loss if the player remains
+                // within the lose distance for LOSE_HOLD_MS milliseconds. This reduces spurious resets
+                // when the player only briefly comes close during the chase.
+                try {
+                    if (!update._losePendingAt) {
+                        update._losePendingAt = nowTime || performance.now();
+                    }
+                    const pendingDur = (nowTime || performance.now()) - update._losePendingAt;
+                    if (pendingDur >= LOSE_HOLD_MS && !update._loseTriggered) {
+                        update._loseTriggered = true;
+                        // clear pending
+                        update._losePendingAt = null;
                         try {
-                            additional = (typeof window !== 'undefined' && Array.isArray(window.ADDITIONAL_NAVIGATION_POSITIONS)) ? window.ADDITIONAL_NAVIGATION_POSITIONS : null;
-                        } catch (e) { additional = null; }
-                        if (!additional && scene && scene.userData && Array.isArray(scene.userData.additionalNavigationPositions)) {
-                            additional = scene.userData.additionalNavigationPositions;
-                        }
+                            if (window && window.achievements && typeof window.achievements.unlock === 'function') {
+                                window.achievements.unlock('game_lost');
+                            }
+                        } catch (e) {}
+                        try { showDeathOverlay(); } catch (e) {}
 
-                        let dest = null;
-                        if (additional && additional.length > 0) dest = additional[0];
-                        else if (navigationPositions && navigationPositions.length > 0) dest = navigationPositions[0];
-
-                        if (dest && dest.length >= 3) {
+                        // Reset player and Boisvert positions to the first additional navigation point (or fallback)
+                        try {
+                            let additional = null;
                             try {
-                                camera.position.set(dest[0], dest[1], dest[2]);
-                                if (controls && controls.target && typeof controls.target.copy === 'function') {
-                                    controls.target.copy(camera.position);
+                                additional = (typeof window !== 'undefined' && Array.isArray(window.ADDITIONAL_NAVIGATION_POSITIONS)) ? window.ADDITIONAL_NAVIGATION_POSITIONS : null;
+                            } catch (e) { additional = null; }
+                            if (!additional && scene && scene.userData && Array.isArray(scene.userData.additionalNavigationPositions)) {
+                                additional = scene.userData.additionalNavigationPositions;
+                            }
+
+                            let dest = null;
+                            if (additional && additional.length > 0) dest = additional[0];
+                            else if (navigationPositions && navigationPositions.length > 0) dest = navigationPositions[0];
+
+                            if (dest && dest.length >= 3) {
+                                try {
+                                    camera.position.set(dest[0], dest[1], dest[2]);
+                                    if (controls && controls.target && typeof controls.target.copy === 'function') {
+                                        controls.target.copy(camera.position);
+                                    }
+                                } catch (e) {}
+                            }
+
+                            // reset Boisvert to spawn pos index 0 if available
+                            try {
+                                if (boisvertSpawnPositions && boisvertSpawnPositions.length > 0) {
+                                    const s = boisvertSpawnPositions[0];
+                                    if (s && s.length >= 3) {
+                                        boisvertModel.position.set(s[0], s[1], s[2]);
+                                    }
+                                    if (boisvertZRotations && Array.isArray(boisvertZRotations) && boisvertZRotations[0] !== undefined) {
+                                        try { boisvertModel.rotation.set(Math.PI / 2, 0, boisvertZRotations[0]); } catch (e) {}
+                                    }
                                 }
                             } catch (e) {}
-                        }
 
-                        // reset Boisvert to spawn pos index 0 if available
-                        try {
-                            if (boisvertSpawnPositions && boisvertSpawnPositions.length > 0) {
-                                const s = boisvertSpawnPositions[0];
-                                if (s && s.length >= 3) {
-                                    boisvertModel.position.set(s[0], s[1], s[2]);
+                            // Allow countdown to be started again
+                            try {
+                                _countdownCompleted = false;
+                                _countdownStart = 0;
+                                if (_chaseMsgEl) {
+                                    try { _chaseMsgEl.style.opacity = '0'; } catch (e) {}
                                 }
-                                if (boisvertZRotations && Array.isArray(boisvertZRotations) && boisvertZRotations[0] !== undefined) {
-                                    try { boisvertModel.rotation.set(Math.PI / 2, 0, boisvertZRotations[0]); } catch (e) {}
+                                if (update) {
+                                    try { update._chaseActive = false; } catch (e) {}
+                                    try { update._loseTriggered = false; } catch (e) {}
                                 }
-                            }
+                            } catch (e) {}
                         } catch (e) {}
 
-                        // Allow countdown to be started again
-                        try {
-                            _countdownCompleted = false;
-                            _countdownStart = 0;
-                            if (_chaseMsgEl) {
-                                try { _chaseMsgEl.style.opacity = '0'; } catch (e) {}
-                            }
-                            if (update) {
-                                try { update._chaseActive = false; } catch (e) {}
-                                try { update._loseTriggered = false; } catch (e) {}
-                            }
-                        } catch (e) {}
-                    } catch (e) {}
-
-                    // stop further chase behavior
-                    try { update._chaseMoveDir = null; } catch (e) {}
-                    try { update._chaseActive = false; } catch (e) {}
+                        // stop further chase behavior
+                        try { update._chaseMoveDir = null; } catch (e) {}
+                        try { update._chaseActive = false; } catch (e) {}
+                    }
+                } catch (e) {
+                    // ensure a failure here doesn't cause a loss; clear pending
+                    update._losePendingAt = null;
                 }
                 return;
+            } else {
+                // Player moved out of lose distance; clear any pending lose timer
+                update._losePendingAt = null;
             }
 
             if (dist <= 0.001) {
@@ -1038,7 +1118,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             const items = [
                 '1: silly pumpkin',
                 '2: terrablade',
-                '3: easter? egg'
+                '3: cd'
             ];
 
             items.forEach((labelText, idx) => {
@@ -1245,6 +1325,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
 
     function startChaseMessageCountdown() {
         try {
+            lookAtBoisvert(); 
             ensureChaseMessage();
             if (!_chaseMsgEl) return;
             
@@ -1291,6 +1372,8 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                             try {
                                 if (typeof update === 'function') update._chaseActive = true;
                             } catch(e) {}
+                            // Make the player look at Boisvert when the chase/countdown completes
+                            try { lookAtBoisvert(); } catch (e) {}
                             // show game intro and items list when chase starts
                             try { showGameIntro(); } catch (e) {}
                             try { ensureItemsList(); } catch (e) {}
@@ -1910,10 +1993,31 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
 
         const currentPos = camera.position.clone();
         const moved = currentPos.distanceTo(lastCameraPosition) > 0.1;
+        // Detect sudden teleports/jumps during active chase: if camera or Boisvert
+        // suddenly moved more than RESET_JUMP_THRESHOLD within a single update, treat
+        // it as an immediate loss.
+        try {
+            if (update && update._chaseActive) {
+                const prevCam = update._prevCameraPos || lastCameraPosition || currentPos;
+                const camJump = currentPos.distanceTo(prevCam);
+                const prevBois = update._prevBoisvertPos || (boisvertModel ? boisvertModel.position.clone() : new THREE.Vector3());
+                const boisJump = boisvertModel ? boisvertModel.position.distanceTo(prevBois) : 0;
+                if ((typeof camJump === 'number' && camJump > RESET_JUMP_THRESHOLD) || (typeof boisJump === 'number' && boisJump > RESET_JUMP_THRESHOLD)) {
+                    try {
+                        console.warn('[boisvertTeleporter] sudden position jump detected', { camJump, boisJump });
+                        performLoss('position_jump');
+                    } catch (e) {}
+                }
+            }
+        } catch (e) {}
         if (moved) {
             checkCameraPosition();
             lastCameraPosition.copy(currentPos);
         }
+
+        // store prev positions for next-frame jump detection
+        try { update._prevCameraPos = currentPos.clone(); } catch (e) {}
+        try { if (boisvertModel) update._prevBoisvertPos = boisvertModel.position.clone(); } catch (e) {}
 
         if (pendingWalkTarget) {
             const d = camera.position.distanceTo(pendingWalkTarget);

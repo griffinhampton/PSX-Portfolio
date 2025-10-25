@@ -362,6 +362,7 @@ export function registerDefaultAchievements() {
         { id: 'clicked_paper', title: 'Find my Pages...', description: 'You examined the paper on the table (my resume).' },
         { id: 'clicked_painting', title: 'Art Critic', description: 'You inspected the painting.' },
         { id: 'clicked_cola', title: 'Is This a Fallout Reference?', description: 'You inspected the LinkedIn Cola bottle.' },
+    { id: 'clicked_easter', title: 'Easter Hunter', description: 'You found the hidden easter egg.' },
         { id: 'watched_screen', title: 'Film Critic', description: 'You played the video on the TV.' },
         { id: 'visited_first_dlc', title: 'Where am I..?', description: 'You traveled to the first area of the DLC.' },
         { id: 'clicked_boisvert', title: 'Hello, Room', description: 'You clicked on the entity.' },

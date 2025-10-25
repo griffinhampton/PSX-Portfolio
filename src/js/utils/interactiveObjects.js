@@ -168,8 +168,39 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         // Accept several name variants for the silly pumpkin (typos or alternate names)
         if ((n.includes('silly') || n.includes('goofy') || n.includes('punk') || n.includes('pumpk')) && n.includes('fetchitem')) return 0; // silly pumpkin
         if (n.includes('terrablade') && n.includes('fetchitem')) return 1; // terrablade
-        if (n.includes('easter') && n.includes('fetchitem')) return 2; // easter egg
+        // Use a CD / disc fetchitem for the third hunt item
+        if ((n.includes('cd') || n.includes('disc') || n.includes('compact')) && n.includes('fetchitem')) return 2; // cd fetchitem
         return -1;
+    }
+
+    /**
+     * Determine whether the Boisvert chase is currently active.
+     * We check a few possible globals/properties to be tolerant of different modules.
+     */
+    function isChaseActive() {
+        try {
+            if (typeof window === 'undefined') return false;
+            const bt = window.boisvertTeleporterManager;
+            const bg = window.boisvertGame;
+            // common property names used across modules
+            if (bt) {
+                // The teleporter manager exposes an `update` function which carries
+                // an internal `_chaseActive` flag (see boisvertTeleporter.js). Check that first.
+                try {
+                    if (bt.update && bt.update._chaseActive) return true;
+                } catch (e) {}
+                if (bt.isChaseActive || bt.chaseActive || bt._isChaseActive) return true;
+                if (typeof bt.isChasing === 'boolean') return !!bt.isChasing;
+            }
+            if (bg) {
+                if (bg.isChasing || bg.chaseActive || bg.inChase) return true;
+                // some code paths may put the chase flag on the bg.update object
+                try { if (bg.update && bg.update._chaseActive) return true; } catch (e) {}
+            }
+        } catch (e) {
+            // ignore
+        }
+        return false;
     }
 
     /**
@@ -259,10 +290,20 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         // If this object is a fetch item, mark it collected immediately
         if (config && config.isFetchItem) {
             try {
-                const idx = getFetchItemIndexByName(config.objectName || object.name);
-                const setter = window && window.boisvertGame && window.boisvertGame.setItemChecked;
-                if (typeof setter === 'function' && idx >= 0) {
-                    try { window.boisvertGame.setItemChecked(idx, true); } catch (e) { /* ignore */ }
+                const objName = (config.objectName || object.name || '').toLowerCase();
+                // If this is the easter egg, only award the achievement and do NOT mark the hunt item
+                if (objName.includes('easter')) {
+                    try {
+                        if (window && window.achievements && typeof window.achievements.unlock === 'function') {
+                            window.achievements.unlock('clicked_easter');
+                        }
+                    } catch (e) {}
+                } else {
+                    const idx = getFetchItemIndexByName(config.objectName || object.name);
+                    const setter = window && window.boisvertGame && window.boisvertGame.setItemChecked;
+                    if (typeof setter === 'function' && idx >= 0) {
+                        try { window.boisvertGame.setItemChecked(idx, true); } catch (e) { /* ignore */ }
+                    }
                 }
             } catch (e) {
                 console.warn('[interactiveObjects] fetchitem marking failed', e);
@@ -589,6 +630,27 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
             }
 
             if (clicked && clicked.userData.isInteractive) {
+                // If this interactive is a fetch item and the chase isn't active, ignore clicks
+                try {
+                    const cfg = clicked.userData.config || {};
+                    const isFetch = !!cfg.isFetchItem;
+                    const nameLower = ((cfg.objectName || clicked.name) || '').toLowerCase();
+                    const isEaster = nameLower.includes && nameLower.includes('easter');
+                    if (isFetch && !isEaster && !isChaseActive()) {
+                        if (window && window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] fetchitem click ignored: chase not active', clicked.name);
+                        // Treat as a non-interactive click: reset any active object if cooldown elapsed
+                        if (currentlyActiveObject) {
+                            if (Date.now() >= cooldownEndTime) {
+                                resetObject(currentlyActiveObject);
+                                currentlyActiveObject = null;
+                                cooldownEndTime = 0;
+                            }
+                        }
+                        return;
+                    }
+                } catch (e) {
+                    // ignore and continue
+                }
                 // If this is a different object than the currently active one, reset the old one
                 if (currentlyActiveObject && currentlyActiveObject !== clicked) {
                     // Check cooldown before allowing reset
@@ -680,9 +742,25 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         // 1. Camera is at allowed position
         // 2. Object hasn't been clicked yet
         // 3. Object is not currently active
-        const shouldShow = showIndicator && 
-                          !object.userData.hasBeenClicked && 
-                          currentlyActiveObject !== object;
+        const shouldShow = (function() {
+            // Base conditions
+            if (!showIndicator) return false;
+            if (object.userData.hasBeenClicked) return false;
+            if (currentlyActiveObject === object) return false;
+
+            // If this is a fetch item, only show indicators during an active chase
+            try {
+                const cfg = object.userData.config || {};
+                const isFetch = !!cfg.isFetchItem;
+                const nameLower = ((cfg.objectName || object.name) || '').toLowerCase();
+                const isEaster = nameLower.includes && nameLower.includes('easter');
+                if (isFetch && !isEaster && !isChaseActive()) return false;
+            } catch (e) {
+                // ignore
+            }
+
+            return true;
+        })();
         
         if (!shouldShow) {
             indicator.style.display = 'none';
