@@ -32,7 +32,7 @@
           <span class="popup-title">There's something in these woods...</span>
         </div>
         <div class="popup-body">
-          <p class="popup-text" style="color:red;text-align: center;">Click and drag to look around!!!</p>
+          <p id="welcomeLookHint" class="popup-text" style="color:red;text-align: center;">Click and drag to look around!!!</p>
           <p class="popup-text" style="text-align: center;">Click the blue orbs to move, and click anything with a red exclaimation point over it.</p>
           <div style="height:10px"></div>
           <button id="welcomeButton" class="popup-return-btn">ENTER THE WOODS &gt;</button>
@@ -43,7 +43,7 @@
     <!-- Loading Screen -->
     <div id="loadingScreen" class="loading-screen">
       <div class="loading-content">
-        <div class = "loading-message" style="color:red">CLICK AND DRAG TO LOOK AROUND</div>
+  <div id="loadingLookHint" class = "loading-message" style="color:red">CLICK AND DRAG TO LOOK AROUND</div>
         <div class="loading-message" id="loadingMessage">INITIALIZING...</div>
         <div class="loading-bar-container">
           <div class="loading-bar" id="loadingBar"></div>
@@ -172,73 +172,6 @@
     </div>
   <!-- Achievements toggle moved into navbar -->
     <script type="module" src="index.js"></script>
-    <script>
-      // Show resume image popup
-      document.addEventListener('DOMContentLoaded', function() {
-        var showBtn = document.getElementById('showResumeImageBtn');
-        var imagePopup = document.getElementById('resumeImagePopup');
-        var closeBtn = imagePopup ? imagePopup.querySelector('.popup-close') : null;
-        if (showBtn && imagePopup) {
-          showBtn.addEventListener('click', function() {
-            imagePopup.style.display = 'block';
-          });
-        }
-        if (closeBtn && imagePopup) {
-          closeBtn.addEventListener('click', function() {
-            imagePopup.style.display = 'none';
-          });
-        }
-
-        // Drag and drop for all .draggable popups
-        function makeDraggable(popupSelector) {
-          var popups = document.querySelectorAll(popupSelector);
-          popups.forEach(function(popup) {
-            var isDragging = false;
-            var startX, startY, origX, origY;
-            var parent = popup.closest('.resume-image-popup, .resume-popup, .linkedin-popup, .about-popup, .welcome-popup');
-            var header = popup.querySelector('.popup-header') || popup;
-            header.style.cursor = 'grab';
-            header.addEventListener('mousedown', function(e) {
-              isDragging = true;
-              popup.classList.add('dragging');
-              startX = e.clientX;
-              startY = e.clientY;
-              var rect = parent.getBoundingClientRect();
-              origX = rect.left;
-              origY = rect.top;
-              document.body.style.userSelect = 'none';
-            });
-            document.addEventListener('mousemove', function(e) {
-              if (!isDragging) return;
-              var dx = e.clientX - startX;
-              var dy = e.clientY - startY;
-              parent.style.top = (origY + dy) + 'px';
-              parent.style.left = (origX + dx) + 'px';
-              parent.style.transform = 'translate(0, 0)';
-            });
-            document.addEventListener('mouseup', function() {
-              if (isDragging) {
-                isDragging = false;
-                popup.classList.remove('dragging');
-                document.body.style.userSelect = '';
-              }
-            });
-          });
-        }
-        makeDraggable('.draggable');
-      });
-      
-        // Simple helper: open achievements popup if present
-        document.addEventListener('DOMContentLoaded', function() {
-          var achToggle = document.getElementById('achievementsToggle');
-          var achPopup = document.getElementById('achievementsPopup');
-          if (achToggle && achPopup) {
-            achToggle.addEventListener('click', function() {
-              achPopup.style.display = achPopup.style.display === 'block' ? 'none' : 'block';
-            });
-          }
-        });
-    </script>
     
       <!-- Achievements Popup -->
       </div>

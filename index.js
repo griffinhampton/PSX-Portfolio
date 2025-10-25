@@ -1,13 +1,10 @@
 import * as THREE from "three";
 import gsap from 'gsap';
-import { getQualitySettings } from "./src/js/utils/mobileDetect.js";
+import { isMobileDevice, getQualitySettings } from "./src/js/utils/mobileDetect.js";
 import { setupScene } from "./src/js/scene/sceneSetup.js";
-import { setupPostProcessing } from "./src/js/postprocessing/postprocesses.js";
 import { setupLights } from "./src/js/lights/lights.js";
-import { setupParticles, setupParticleMouseListener, updateParticles } from "./src/js/particles/particles.js";
 import { setupModelLoader } from "./src/js/loaders/modelLoader.js";
 import { setupCameraControls, setupOrbNavigation } from "./src/js/controls/cameraControls.js";
-import RotationPad from "./src/js/utils/RotationPad.js";
 import { setupPositionTracker } from "./src/js/utils/positionTracker.js";
 import { setupResizeHandler } from "./src/js/utils/resizeHandler.js";
 import { createAnimationLoop } from "./src/js/animation/animationLoop.js";
@@ -37,13 +34,8 @@ const { scene, camera, renderer } = setupScene(qualitySettings);
 window.camera = camera;
 window.scene = scene;
 
-// Set up post-processing with pixelation effect - now works on mobile too!
+// Set up post-processing with pixelation effect - composer will be set by lazy loader if enabled
 let composer, pixelationPass;
-if (qualitySettings.enablePostProcessing) {
-    const postProcessing = setupPostProcessing(renderer, scene, camera, qualitySettings);
-    composer = postProcessing.composer;
-    pixelationPass = postProcessing.pixelationPass;
-}
 
 // Set up position tracker
 const positionTracker = setupPositionTracker(qualitySettings);
@@ -122,7 +114,7 @@ if (ENABLE_DEV_FLY_CONTROLS) {
 
                 // Expose for console
                 window.flyControls = fly;
-                console.info('[dev] FlyControls enabled (temporary) - controls now delegating to FlyControls');
+                
             } catch (err) {
                 console.warn('[dev] Failed to initialize FlyControls', err);
             }
@@ -160,36 +152,7 @@ if (controls && typeof controls.setShouldDisableLookFn === 'function') {
 // Initialize unified cursor manager
 initializeCursorManager(renderer.domElement, camera);
 
-// Rotation pad: mobile-only on-screen control to adjust camera look (yaw/pitch)
-let rotationPad = null;
-if (qualitySettings.isMobile) {
-    try {
-        rotationPad = new RotationPad(document.body);
-        // Sensitivity tuning: how strongly pad deltas affect rotation
-        const ROTATION_PAD_SENSITIVITY = 0.06; // adjust to taste
-        rotationPad.padElement.addEventListener('YawPitch', (ev) => {
-            try {
-                const d = ev && ev.detail ? ev.detail : null;
-                if (!d) return;
-                const dx = (typeof d.deltaX === 'number') ? d.deltaX : 0;
-                const dy = (typeof d.deltaY === 'number') ? d.deltaY : 0;
-
-                // Apply to camera quaternion similar to pointer-drag controls
-                const PI_2 = Math.PI / 2;
-                const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
-                euler.y -= dx * ROTATION_PAD_SENSITIVITY;
-                euler.x -= dy * ROTATION_PAD_SENSITIVITY;
-                euler.x = Math.max(-PI_2 + 0.1, Math.min(PI_2 - 0.1, euler.x));
-                camera.quaternion.setFromEuler(euler);
-
-                // Keep controls.target roughly aligned with camera for systems that use it
-                try { if (controls && controls.target && typeof controls.target.copy === 'function') controls.target.copy(camera.position); } catch (e) {}
-            } catch (e) { /* ignore pad errors */ }
-        });
-    } catch (e) {
-        console.warn('[RotationPad] failed to initialize', e);
-    }
-}
+// RotationPad initialization moved to `mobileDetect.js` so it appears as early as possible on mobile
 
 
 
@@ -258,6 +221,93 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {}
 });
 
+// Centralized UI initialization: move inline index.html scripts here
+function initUI() {
+    try {
+        // Resume image popup wiring
+        const showBtn = document.getElementById('showResumeImageBtn');
+        const imagePopup = document.getElementById('resumeImagePopup');
+        const closeBtn = imagePopup ? imagePopup.querySelector('.popup-close') : null;
+        if (showBtn && imagePopup) {
+            showBtn.addEventListener('click', function() { imagePopup.style.display = 'block'; });
+        }
+        if (closeBtn && imagePopup) {
+            closeBtn.addEventListener('click', function() { imagePopup.style.display = 'none'; });
+        }
+
+        // Drag and drop for all .draggable popups
+        function makeDraggable(popupSelector) {
+            var popups = document.querySelectorAll(popupSelector);
+            popups.forEach(function(popup) {
+                var isDragging = false;
+                var startX, startY, origX, origY;
+                var parent = popup.closest('.resume-image-popup, .resume-popup, .linkedin-popup, .about-popup, .welcome-popup');
+                var header = popup.querySelector('.popup-header') || popup;
+                try { header.style.cursor = 'grab'; } catch (e) {}
+                header.addEventListener('mousedown', function(e) {
+                    isDragging = true;
+                    popup.classList.add('dragging');
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    var rect = parent.getBoundingClientRect();
+                    origX = rect.left;
+                    origY = rect.top;
+                    document.body.style.userSelect = 'none';
+                });
+                document.addEventListener('mousemove', function(e) {
+                    if (!isDragging) return;
+                    var dx = e.clientX - startX;
+                    var dy = e.clientY - startY;
+                    parent.style.top = (origY + dy) + 'px';
+                    parent.style.left = (origX + dx) + 'px';
+                    parent.style.transform = 'translate(0, 0)';
+                });
+                document.addEventListener('mouseup', function() {
+                    if (isDragging) {
+                        isDragging = false;
+                        popup.classList.remove('dragging');
+                        document.body.style.userSelect = '';
+                    }
+                });
+            });
+        }
+        makeDraggable('.draggable');
+
+        // Swap the welcome/loading look hints for mobile users (use centralized detector)
+        try {
+            var hint = document.getElementById('welcomeLookHint');
+            var loadingHint = document.getElementById('loadingLookHint');
+            var mobile = false;
+            try { mobile = !!isMobileDevice(); } catch (e) { mobile = false; }
+            try {
+                if (!mobile && typeof getQualitySettings === 'function') {
+                    var q = getQualitySettings();
+                    if (q && q.isMobile) mobile = true;
+                }
+            } catch (e) { /* ignore */ }
+            if (mobile) {
+                if (hint) hint.textContent = 'Use the directional pads to look around!!!';
+                if (loadingHint) loadingHint.textContent = 'USE THE DIRECTIONAL PADS TO LOOK AROUND';
+            }
+        } catch (e) { /* ignore */ }
+
+        // Simple helper: open achievements popup if present
+        try {
+            var achToggle = document.getElementById('achievementsToggle');
+            var achPopup = document.getElementById('achievementsPopup');
+            if (achToggle && achPopup) {
+                achToggle.addEventListener('click', function() {
+                    achPopup.style.display = achPopup.style.display === 'block' ? 'none' : 'block';
+                });
+            }
+        } catch (e) {}
+    } catch (e) {
+        console.warn('[initUI] failed', e);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initUI);
+
 
 const ADDITIONAL_NAVIGATION_POSITIONS = [
     [4, -8, 10]
@@ -311,9 +361,51 @@ const cameraInteractivePositions = [
     [-0.3, 0.10, -0.85] // Screen position
 ];
 
-// Set up particles
-const particles = setupParticles(scene, cross, qualitySettings);
-const particleArrays = particles.particleArrays;
+// Particle arrays may be populated by lazy loader. Keep a local reference for early wiring.
+let particleArrays = null;
+
+// Lazy-load heavy subsystems (postprocessing, particles) during idle time so initial path stays fast.
+function lazyLoadHeavyModules() {
+    const doLoad = () => {
+        // Postprocessing - only if allowed by quality settings
+        if (qualitySettings && qualitySettings.enablePostProcessing) {
+            import('./src/js/postprocessing/postprocesses.js')
+                .then(mod => {
+                        try {
+                        const postProcessing = mod.setupPostProcessing(renderer, scene, camera, qualitySettings);
+                        composer = postProcessing.composer;
+                        pixelationPass = postProcessing.pixelationPass;
+                        // expose globally so animation loop can pick it up
+                        try { window.composer = composer; window.pixelationPass = pixelationPass; } catch (e) {}
+                    } catch (e) { console.warn('[lazy] postprocessing init failed', e); }
+                })
+                .catch(err => { console.warn('[lazy] failed to import postprocessing', err); });
+        }
+
+        // Particles - always lazy-load (heavy) but still respect quality settings
+        import('./src/js/particles/particles.js')
+            .then(mod => {
+                    try {
+                    const p = mod.setupParticles(scene, cross, qualitySettings);
+                    particleArrays = p && p.particleArrays ? p.particleArrays : null;
+                    try { window.particleArrays = particleArrays; window.updateParticles = mod.updateParticles; } catch (e) {}
+                    // If flashlight/mouse interactions are enabled, hook the particle mouse listener
+                    try {
+                        if (qualitySettings && qualitySettings.enableFlashlight && typeof mod.setupParticleMouseListener === 'function' && typeof mouse !== 'undefined' && mouse) {
+                            mod.setupParticleMouseListener(mouse, qualitySettings);
+                        }
+                    } catch (e) {}
+                } catch (e) { console.warn('[lazy] particles init failed', e); }
+            })
+            .catch(err => { console.warn('[lazy] failed to import particles', err); });
+    };
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+        try { requestIdleCallback(doLoad, { timeout: 2000 }); } catch (e) { setTimeout(doLoad, 2000); }
+    } else {
+        setTimeout(doLoad, 2000);
+    }
+}
 
 // Set up lights
 const lights = setupLights(scene, camera, qualitySettings);
@@ -321,10 +413,8 @@ const { flashlight, raycaster, mouse, centerLight } = lights;
 // expose flashlight for global fallback access
 try { window.flashlight = flashlight; } catch (e) {}
 
-// Set up particle mouse listener
-if (qualitySettings.enableFlashlight && mouse) {
-    setupParticleMouseListener(mouse, qualitySettings);
-}
+// Defer heavy particle/postprocessing initialization until after lights exist (mouse variable will be available)
+try { lazyLoadHeavyModules(); } catch (e) { /* ignore */ }
 
 // Set up window resize handler
 setupResizeHandler(camera, renderer, composer, pixelationPass, qualitySettings);

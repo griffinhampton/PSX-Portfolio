@@ -9,6 +9,9 @@ class RotationPad {
     eventRepeatTimeout
     regionData = {}
     handleData = {}
+    // Track active touch identifier for multi-touch support
+    activePointerId = null
+    // Separate mouse flag for desktop interactions
     mouseDown = false
     mouseStopped = false
 
@@ -16,10 +19,34 @@ class RotationPad {
         this.container = container
         this.padElement = document.createElement('div')
         this.padElement.classList.add('rotation-pad')
+    // Basic inline styles so pad is visible without external CSS
+    this.padElement.style.position = 'fixed'
+    this.padElement.style.zIndex = '10001' // sit above movement pad
+    this.padElement.style.pointerEvents = 'auto'
+    this.padElement.style.userSelect = 'none'
         this.region = document.createElement('div')
         this.region.classList.add('region')
+    // region styles
+    this.region.style.width = '160px'
+    this.region.style.height = '160px'
+    this.region.style.background = 'rgba(0,0,0,0.25)'
+    this.region.style.border = '1px solid rgba(255,255,255,0.06)'
+    this.region.style.borderRadius = '50%'
+    this.region.style.position = 'relative'
+    this.region.style.touchAction = 'none'
         this.handle = document.createElement('div')
         this.handle.classList.add('handle')
+    // handle styles
+    this.handle.style.width = '40px'
+    this.handle.style.height = '40px'
+    this.handle.style.background = 'rgba(255,255,255,0.95)'
+    this.handle.style.border = '1px solid rgba(0,0,0,0.08)'
+    this.handle.style.borderRadius = '50%'
+    this.handle.style.position = 'absolute'
+    this.handle.style.left = '40px'
+    this.handle.style.top = '40px'
+    this.handle.style.transition = 'opacity 0.15s, transform 0.05s'
+    this.handle.style.opacity = '0.95'
         this.region.appendChild(this.handle)
         this.padElement.append(this.region)
         this.container.append(this.padElement)
@@ -49,28 +76,46 @@ class RotationPad {
             this.update(event.pageX, event.pageY)
         })
 
-        //Touch events:
+        // Touch events — track specific touch identifier so two pads can be used simultaneously
         this.region.addEventListener('touchstart', (event) => {
-            this.mouseDown = true
+            // Use the first touch that started on this region and remember its id
+            const t = event.changedTouches && event.changedTouches[0]
+            if (!t) return
+            this.activePointerId = t.identifier
             this.handle.style.opacity = 1.0
-            this.update(
-                event.targetTouches[0].pageX,
-                event.targetTouches[0].pageY
-            )
-        })
+            // Prevent the page from scrolling while interacting
+            if (event.cancelable) event.preventDefault()
+            this.update(t.pageX, t.pageY)
+        }, { passive: false })
 
-        let touchEnd = () => {
-            this.mouseDown = false
-            this.resetHandlePosition()
+        let touchEnd = (event) => {
+            if (!this.activePointerId) return
+            // If one of the ended/cancelled touches matches our active id, clear it
+            for (let i = 0; i < event.changedTouches.length; i++) {
+                if (event.changedTouches[i].identifier === this.activePointerId) {
+                    this.activePointerId = null
+                    this.resetHandlePosition()
+                    break
+                }
+            }
         }
         document.addEventListener('touchend', touchEnd)
         document.addEventListener('touchcancel', touchEnd)
 
         document.addEventListener('touchmove', (event) => {
-            if (!this.mouseDown)
-                return
-            this.update(event.touches[0].pageX, event.touches[0].pageY)
-        })
+            if (this.activePointerId === null) return
+            // Find the touch that matches our active id
+            let touch = null
+            for (let i = 0; i < event.touches.length; i++) {
+                if (event.touches[i].identifier === this.activePointerId) {
+                    touch = event.touches[i]
+                    break
+                }
+            }
+            if (!touch) return
+            if (event.cancelable) event.preventDefault()
+            this.update(touch.pageX, touch.pageY)
+        }, { passive: false })
 
         this.resetHandlePosition()
     }
@@ -78,11 +123,16 @@ class RotationPad {
     alignAndConfigPad(canvas){
         // Safely handle missing canvas
         const canvasRect = canvas ? canvas.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight, top: 0, left: 0 };
-        // Position near bottom-right of canvas
+        // Position near bottom-right of canvas but lifted a bit so it doesn't overlap the movement pad
         this.padElement.style.position = 'fixed'
-        this.padElement.style.zIndex = '9999'
-        this.padElement.style.top = (canvasRect.top + canvasRect.height - 120 - 10) + 'px'
-        this.padElement.style.left = (canvasRect.left + canvasRect.width - 120 - 20) + 'px'
+        this.padElement.style.zIndex = '10001'
+    // Lift pad up by additional offset so it doesn't overlap movement pad (increase if still overlapping)
+    // Increased lift and left offset to move the pad higher and more to the left per user request
+    const LIFT_OFFSET = 130; // pixels to raise pad from its default bottom placement (reduced slightly to move pad down)
+    const padSize = 120;
+    // move further up (larger LIFT_OFFSET) and further left (larger right-side subtraction)
+    this.padElement.style.top = (canvasRect.top + canvasRect.height - padSize  - LIFT_OFFSET) + 'px'
+    this.padElement.style.left = (canvasRect.left + canvasRect.width - padSize - 50) + 'px'
 
         this.regionData.width = this.region.offsetWidth
         this.regionData.height = this.region.offsetHeight
@@ -118,7 +168,6 @@ class RotationPad {
 
         this.handle.style.top = newTop - this.handleData.radius + 'px'
         this.handle.style.left = newLeft - this.handleData.radius + 'px'
-        // console.log(newTop , newLeft)
 
         // Providing event and data for handling camera movement.
         var deltaX = this.regionData.centerX - parseInt(newLeft)
@@ -128,7 +177,7 @@ class RotationPad {
         deltaY = -2 + (2 + 2) * (deltaY - (-this.regionData.radius)) / (this.regionData.radius - (-this.regionData.radius))
         deltaX = -1 * Math.round(deltaX * 10) / 10
         deltaY = -1 * Math.round(deltaY * 10) / 10
-        // console.log(deltaX, deltaY)
+        
         this.sendEvent(deltaX, deltaY)
     }
 
@@ -137,7 +186,8 @@ class RotationPad {
             clearTimeout(this.eventRepeatTimeout)
         }
 
-        if (!this.mouseDown) {
+        // Only continue sending events while we have an active pointer (touch) or mouse is down
+        if (this.activePointerId === null && !this.mouseDown) {
             clearTimeout(this.eventRepeatTimeout)
             return
         }

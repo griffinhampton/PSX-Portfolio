@@ -149,8 +149,82 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         indicator.className = 'interactive-indicator';
         indicator.textContent = '!';
         indicator.style.display = 'none'; // Hidden by default
+        // Ensure the indicator does not capture pointer events so clicks pass through
+        // to the underlying renderer canvas (prevents the indicator div from blocking pointerdown)
+        indicator.style.pointerEvents = 'none';
+        // Keep indicator visually above canvas
+        indicator.style.zIndex = '9999';
         document.body.appendChild(indicator);
         indicators.set(object, indicator);
+    }
+
+    /**
+     * Map fetchitem object names to the items list index used by boisvertGame
+     * Returns -1 if name doesn't map to a known fetch item
+     */
+    function getFetchItemIndexByName(name) {
+        if (!name) return -1;
+        const n = name.toLowerCase();
+        // Accept several name variants for the silly pumpkin (typos or alternate names)
+        if ((n.includes('silly') || n.includes('goofy') || n.includes('punk') || n.includes('pumpk')) && n.includes('fetchitem')) return 0; // silly pumpkin
+        if (n.includes('terrablade') && n.includes('fetchitem')) return 1; // terrablade
+        if (n.includes('easter') && n.includes('fetchitem')) return 2; // easter egg
+        return -1;
+    }
+
+    /**
+     * Respawn (reset) all fetch items: restore visibility, position, rotation and game-state.
+     * This will also clear any active tweens on the object so it returns to its original pose.
+     */
+    function respawnFetchItems() {
+        try {
+            if (window && window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] respawning all fetch items...');
+            interactiveObjects.forEach(obj => {
+                try {
+                    const cfg = obj.userData && obj.userData.config;
+                    if (!cfg || !cfg.isFetchItem) return;
+
+                    // Kill any tweens affecting this object
+                    try { gsap.killTweensOf(obj.position); } catch(e) {}
+                    try { gsap.killTweensOf(obj.rotation); } catch(e) {}
+
+                    // Restore original transform if available
+                    if (obj.userData.originalPosition) {
+                        obj.position.copy(obj.userData.originalPosition);
+                    }
+                    if (obj.userData.originalRotation) {
+                        obj.rotation.copy(obj.userData.originalRotation);
+                    }
+
+                    // Ensure visibility
+                    obj.visible = true;
+
+                    // Reset interactive runtime flags
+                    obj.userData.hasBeenClicked = false;
+                    obj.userData.shouldRotate = false;
+                    obj.userData.shouldJitter = false;
+                    obj.userData.targetPosition = null;
+
+                    // If the global game tracks collection state, mark item as unchecked
+                    try {
+                        const idx = getFetchItemIndexByName(cfg.objectName || obj.name);
+                        const setter = window && window.boisvertGame && window.boisvertGame.setItemChecked;
+                        if (typeof setter === 'function' && idx >= 0) {
+                            try { window.boisvertGame.setItemChecked(idx, false); } catch (e) { /* ignore */ }
+                        }
+                    } catch (e) {}
+
+                    // Show indicator again if present
+                    const ind = indicators.get(obj);
+                    if (ind) ind.style.display = 'block';
+                } catch (e) {
+                    console.warn('[interactiveObjects] Error respawning individual fetchitem', e);
+                }
+            });
+            if (window && window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] respawn complete');
+        } catch (e) {
+            console.error('[interactiveObjects] respawnFetchItems failed', e);
+        }
     }
 
     /**
@@ -168,6 +242,12 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         
         // Mark as clicked and hide indicator
         object.userData.hasBeenClicked = true;
+        // Log click for fetch items to help debug raycast/click issues
+        try {
+            if (config && config.isFetchItem) {
+                console.log('[interactiveObjects] fetchitem clicked ->', object.name || '<unnamed>');
+            }
+        } catch (e) {}
         const indicator = indicators.get(object);
         if (indicator) {
             indicator.style.display = 'none';
@@ -176,91 +256,126 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         // Set cooldown time
         cooldownEndTime = Date.now() + clickCooldown;
 
-        // Store target position for jitter reference
-        object.userData.targetPosition = new THREE.Vector3(targetPos[0], targetPos[1], targetPos[2] + zOffset);
+        // If this object is a fetch item, mark it collected immediately
+        if (config && config.isFetchItem) {
+            try {
+                const idx = getFetchItemIndexByName(config.objectName || object.name);
+                const setter = window && window.boisvertGame && window.boisvertGame.setItemChecked;
+                if (typeof setter === 'function' && idx >= 0) {
+                    try { window.boisvertGame.setItemChecked(idx, true); } catch (e) { /* ignore */ }
+                }
+            } catch (e) {
+                console.warn('[interactiveObjects] fetchitem marking failed', e);
+            }
 
-        // Animate to target position
-        gsap.to(object.position, {
-            x: targetPos[0],
-            y: targetPos[1],
-            z: targetPos[2] + zOffset,
-            duration: moveDuration,
-            ease: 'power2.inOut',
-            onComplete: () => {
-                // Start rotation after movement completes
-                if (config.shouldRotate) {
-                    object.userData.shouldRotate = true;
-                }
-                
-                // Start jitter after movement completes
-                if (config.shouldJitter) {
-                    object.userData.shouldJitter = true;
-                }
-                
-                // Show LinkedIn popup for cola bottle
-                if (config.objectName === 'cola') {
-                    const popup = document.getElementById('linkedinPopup');
+            // Fly up by +0.5 on Y over 5 seconds and rotate around Z while flying
+            try {
+                const targetY = (object.position && typeof object.position.y === 'number') ? object.position.y + 0.5 : 0.5;
+                gsap.to(object.position, {
+                    y: targetY,
+                    duration: 5,
+                    ease: 'power1.out',
+                    onComplete: () => {
+                        try { object.visible = false; } catch (e) {}
+                    }
+                });
+
+                // Rotate around Z axis while flying up (2 full rotations)
+                const rotTarget = (object.rotation && typeof object.rotation.z === 'number') ? object.rotation.z + Math.PI * 4 : Math.PI * 4;
+                gsap.to(object.rotation, {
+                    z: rotTarget,
+                    duration: 5,
+                    ease: 'none'
+                });
+            } catch (e) {
+                try { object.visible = false; } catch (e) {}
+            }
+        }
+
+        // Store target position for jitter reference and animate to target if provided
+        if (Array.isArray(targetPos) && targetPos.length >= 3) {
+            object.userData.targetPosition = new THREE.Vector3(targetPos[0], targetPos[1], targetPos[2] + zOffset);
+
+            // Animate to target position
+            gsap.to(object.position, {
+                x: targetPos[0],
+                y: targetPos[1],
+                z: targetPos[2] + zOffset,
+                duration: moveDuration,
+                ease: 'power2.inOut',
+                onComplete: () => {
                     try {
-                        // Reuse a cached audio element if available to avoid re-allocating repeatedly
-                        if (!window.__colaAudio) {
-                            window.__colaAudio = new Audio('src/sounds/cola-drink.mp3');
-                            window.__colaAudio.preload = 'auto';
+                        // Start rotation after movement completes
+                        if (config.shouldRotate) {
+                            object.userData.shouldRotate = true;
                         }
-                        const playPromise = window.__colaAudio.play();
-                        if (playPromise && typeof playPromise.then === 'function') {
-                            playPromise.catch(() => { /* ignore autoplay rejection */ });
-                        }
-                    } catch (audioErr) {
-                        // ignore audio errors
-                        console.warn('[interactiveObjects] cola audio failed to play', audioErr);
-                    }
-                    if (popup) {
-                        popup.style.display = 'block';
-                    }
-                    try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_cola'); } catch(e) {}
-                }
 
-                // Show Resume popup for paper
-                if (config.objectName === 'paper') {
-                    const popup = document.getElementById('resumePopup');
-                    if (popup) {
-                        popup.style.display = 'block';
-                    }
-                    try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_paper'); } catch(e) {}
-                    // Set Resume.webp as paper texture
-                    object.traverse((child) => {
-                        if (child.isMesh && child.material) {
-                            const loader = new THREE.TextureLoader();
-                            loader.load('src/textures/Resume.webp', (texture) => {
-                                // Rotate texture 90 degrees to portrait
-                                texture.center.set(0.5, 0.5);
-                                texture.rotation = -Math.PI / 2;
-                                child.material.map = texture;
-                                child.material.needsUpdate = true;
+                        // Start jitter after movement completes
+                        if (config.shouldJitter) {
+                            object.userData.shouldJitter = true;
+                        }
+
+                        // Show LinkedIn popup for cola bottle
+                        if (config.objectName === 'cola') {
+                            const popup = document.getElementById('linkedinPopup');
+                            try {
+                                if (!window.__colaAudio) {
+                                    window.__colaAudio = new Audio('src/sounds/cola-drink.mp3');
+                                    window.__colaAudio.preload = 'auto';
+                                }
+                                const playPromise = window.__colaAudio.play();
+                                if (playPromise && typeof playPromise.then === 'function') {
+                                    playPromise.catch(() => { /* ignore autoplay rejection */ });
+                                }
+                            } catch (audioErr) {
+                                console.warn('[interactiveObjects] cola audio failed to play', audioErr);
+                            }
+                            if (popup) popup.style.display = 'block';
+                            try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_cola'); } catch(e) {}
+                        }
+
+                        // Show Resume popup for paper
+                        if (config.objectName === 'paper') {
+                            const popup = document.getElementById('resumePopup');
+                            if (popup) popup.style.display = 'block';
+                            try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_paper'); } catch(e) {}
+                            // Set Resume.webp as paper texture
+                            object.traverse((child) => {
+                                if (child.isMesh && child.material) {
+                                    const loader = new THREE.TextureLoader();
+                                    loader.load('src/textures/Resume.webp', (texture) => {
+                                        texture.center.set(0.5, 0.5);
+                                        texture.rotation = -Math.PI / 2;
+                                        child.material.map = texture;
+                                        child.material.needsUpdate = true;
+                                    });
+                                }
                             });
                         }
-                    });
-                }
 
-                // Show About Me popup for painting
-                if (config.objectName === 'painting') {
-                    const popup = document.getElementById('aboutPopup');
-                    if (popup) {
-                        popup.style.display = 'block';
+                        // Show About Me popup for painting
+                        if (config.objectName === 'painting') {
+                            const popup = document.getElementById('aboutPopup');
+                            if (popup) popup.style.display = 'block';
+                            try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_painting'); } catch(e) {}
+                        }
+
+                        // Check composite: if all three clicked achievements + watched_screen unlocked, award master_interactor
+                        try {
+                            const ach = window.achievements;
+                            if (ach && typeof ach.isUnlocked === 'function') {
+                                const all = ach.isUnlocked('clicked_paper') && ach.isUnlocked('clicked_painting') && ach.isUnlocked('clicked_cola') && ach.isUnlocked('watched_screen');
+                                if (all) { try { ach.unlock('master_interactor'); } catch(e) {} }
+                            }
+                        } catch(e) {}
+                    } catch (err) {
+                        // ensure onComplete doesn't break the flow
+                        console.warn('[interactiveObjects] onComplete error', err);
                     }
-                    try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_painting'); } catch(e) {}
                 }
-                
-                // Check composite: if all three clicked achievements + watched_screen unlocked, award master_interactor
-                try {
-                    const ach = window.achievements;
-                    if (ach && typeof ach.isUnlocked === 'function') {
-                        const all = ach.isUnlocked('clicked_paper') && ach.isUnlocked('clicked_painting') && ach.isUnlocked('clicked_cola') && ach.isUnlocked('watched_screen');
-                        if (all) { try { ach.unlock('master_interactor'); } catch(e) {} }
-                    }
-                } catch(e) {}
-            }
-        });
+            });
+
+        }
 
         // Animate rotation if targetRotation is specified
         if (config.targetRotation) {
@@ -343,9 +458,15 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
     function onPointerDown(event) {
         // Handle pointerdown for interactive objects (allow clicks even if controls report dragging)
         // Check if camera is at an allowed position
-        if (!isCameraAtAllowedPosition()) {
-            return; // Don't process clicks if camera is not at allowed position
-        }
+        // Debug: log pointerdown entry and camera allowed state
+        let cameraAllowed = true;
+        try {
+            const rectDbg = domElement.getBoundingClientRect();
+            const clientXD = event.clientX || (event.touches && event.touches[0] && event.touches[0].clientX) || (event.changedTouches && event.changedTouches[0] && event.changedTouches[0].clientX) || 0;
+            const clientYD = event.clientY || (event.touches && event.touches[0] && event.touches[0].clientY) || (event.changedTouches && event.changedTouches[0] && event.changedTouches[0].clientY) || 0;
+            cameraAllowed = isCameraAtAllowedPosition();
+            console.log('[interactiveObjects] pointerdown at', { clientX: clientXD, clientY: clientYD, domRect: { left: rectDbg.left, top: rectDbg.top, width: rectDbg.width, height: rectDbg.height }, cameraAllowed });
+        } catch (e) {}
         
         // Get pointer position
         const rect = domElement.getBoundingClientRect();
@@ -377,15 +498,94 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 }
             });
         });
+        try {
+            console.log('[interactiveObjects] raycastTargets count=', raycastTargets.length, 'interactiveObjects=', interactiveObjects.length, 'interactive names=', interactiveObjects.map(o=>o.name));
+        } catch (e) {}
         
         const intersects = raycaster.intersectObjects(raycastTargets, false);
 
+        // Determine whether the click hit a fetchitem in either the raycastTargets or the whole scene.
+        let clickedIsFetchItem = false;
+        let fullHitsCache = null;
+        try {
+            if (!intersects || intersects.length === 0) {
+                // Fallback debug: see what the ray hits against the whole scene
+                fullHitsCache = raycaster.intersectObjects(scene.children, true);
+                if (fullHitsCache && fullHitsCache.length > 0) {
+                    const fh = fullHitsCache[0];
+                    let chain = [];
+                    try { let p = fh.object; while(p) { chain.push(p.name || p.type); if (p.name && p.name.toLowerCase().includes('fetchitem')) clickedIsFetchItem = true; p = p.parent; } } catch(e){}
+                    console.log('[interactiveObjects] fallback top scene hit:', { name: fh.object.name, uuid: fh.object.uuid, distance: fh.distance, parentChain: chain });
+                } else {
+                    console.log('[interactiveObjects] no intersects on raycastTargets and nothing hit in whole scene');
+                }
+            } else {
+                const top = intersects[0].object;
+                let chain = [];
+                try { let p = top; while(p) { chain.push(p.name || p.type); if (p.name && p.name.toLowerCase().includes('fetchitem')) clickedIsFetchItem = true; p = p.parent; } } catch(e){}
+                console.log('[interactiveObjects] top intersect on raycastTargets:', { name: top.name, uuid: top.uuid, parentChain: chain });
+            }
+        } catch (e) {}
+
+        // If camera is not at an allowed position and the click did not hit a fetch item, ignore the click
+        if (!cameraAllowed && !clickedIsFetchItem) {
+            if (window && window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] click ignored: camera not at allowed position and not a fetchitem');
+            return;
+        }
         if (intersects.length > 0) {
-            let clicked = intersects[0].object;
-            
+            const initialHit = intersects[0].object;
+            let clicked = initialHit;
+
             // Walk up the tree to find the interactive object
             while (clicked && !clicked.userData.isInteractive) {
                 clicked = clicked.parent;
+            }
+
+            // If we couldn't find a registered interactive ancestor, but the hit or one of its parents
+            // is a fetchitem (name contains 'fetchitem'), auto-register a minimal config and treat it as clicked.
+            if ((!clicked || !clicked.userData || !clicked.userData.isInteractive) && initialHit) {
+                try {
+                    let p = initialHit;
+                    let fetchCandidate = null;
+                    while (p) {
+                        try {
+                            if (p.name && p.name.toLowerCase().includes('fetchitem')) {
+                                fetchCandidate = p;
+                                break;
+                            }
+                        } catch (e) {}
+                        p = p.parent;
+                    }
+
+                    if (fetchCandidate) {
+                        // If not already interactive, set minimal userData so onObjectClick can operate
+                        if (!fetchCandidate.userData || !fetchCandidate.userData.isInteractive) {
+                            try {
+                                fetchCandidate.userData = fetchCandidate.userData || {};
+                                fetchCandidate.userData.originalPosition = fetchCandidate.position.clone();
+                                fetchCandidate.userData.originalRotation = fetchCandidate.rotation.clone();
+                                fetchCandidate.userData.isInteractive = true;
+                                fetchCandidate.userData.config = {
+                                    objectName: fetchCandidate.name || 'fetchitem',
+                                    clickCooldown: 300,
+                                    moveDuration: 0.6,
+                                    shouldRotate: false,
+                                    shouldJitter: false,
+                                    isFetchItem: true
+                                };
+                                // add to interactiveObjects list so indicators/updates include it
+                                interactiveObjects.push(fetchCandidate);
+                            } catch (e) {
+                                console.warn('[interactiveObjects] failed to auto-register fetchCandidate', e);
+                            }
+                        }
+
+                        // Treat this as the clicked interactive object
+                        clicked = fetchCandidate;
+                    }
+                } catch (e) {
+                    // ignore and continue
+                }
             }
 
             if (clicked && clicked.userData.isInteractive) {
@@ -565,6 +765,80 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
 
     });
 
+    // Auto-detect any scene objects that include "fetchitem" in their name
+    // These are the collectible items for the Boisvert chase and are made interactive.
+    // Items may be added asynchronously (GLTFLoader), and some scenes add them before
+    // this setup runs. We provide (A) an initial scan, (B) a monkey-patch to catch
+    // future additions, and (C) an exposed force-register helper you can call after
+    // models finish loading.
+    let __originalSceneAdd = null;
+
+    function registerFetchItemsInTree(root) {
+        try {
+            if (!root) return;
+            root.traverse((child) => {
+                try {
+                    if (child && child.name && child.name.toLowerCase().includes('fetchitem')) {
+                        // Avoid double-registration
+                        if (child.userData && child.userData.isInteractive) {
+                            if (window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] fetchitem already registered:', child.name);
+                            return;
+                        }
+
+                        if (window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] Registering fetchitem:', child.name, 'uuid=', child.uuid);
+                        const cfg = {
+                            objectName: child.name,
+                            clickCooldown: 300,
+                            moveDuration: 0.6,
+                            shouldRotate: false,
+                            shouldJitter: false,
+                            isFetchItem: true
+                        };
+                        setupInteractiveObject(child, cfg);
+                        if (window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] fetchitem registered successfully:', child.name);
+                    }
+                } catch (e) {
+                    console.error('[interactiveObjects] Error registering individual fetchitem:', e);
+                }
+            });
+        } catch (e) {
+            console.error('[interactiveObjects] Error in registerFetchItemsInTree:', e);
+        }
+    }
+
+    // Register existing items now (scan the whole scene)
+    try {
+        console.log('[interactiveObjects] Starting initial fetchitem registration...');
+        registerFetchItemsInTree(scene);
+        const found = interactiveObjects.filter(o => o.userData && o.userData.config && o.userData.config.isFetchItem).length;
+        console.log('[interactiveObjects] Initial fetchitem registration complete. Found:', found, 'fetch items');
+    } catch (e) {
+        console.error('[interactiveObjects] Initial fetchitem registration failed:', e);
+    }
+
+    // Monkey-patch scene.add to auto-register any fetchitems added later
+    try {
+        if (scene && typeof scene.add === 'function') {
+            __originalSceneAdd = scene.add.bind(scene);
+            scene.add = function(...objs) {
+                const res = __originalSceneAdd(...objs);
+                try {
+                    if (window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] scene.add called with', objs.length, 'objects');
+                    for (const o of objs) {
+                        // register any fetchitems inside the added subtree
+                        registerFetchItemsInTree(o);
+                    }
+                } catch (e) {
+                    console.error('[interactiveObjects] Error in scene.add monkey-patch:', e);
+                }
+                return res;
+            };
+            console.log('[interactiveObjects] scene.add monkey-patched successfully');
+        }
+    } catch (e) {
+        console.error('[interactiveObjects] Failed to monkey-patch scene.add:', e);
+    }
+
     // Register with cursor manager for hover detection
     registerInteractiveManager(() => interactiveObjects);
 
@@ -575,12 +849,23 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
     // Setup close button handlers for all popups
     setupPopupCloseButtons();
 
-    return {
+    // Prepare manager object so we can expose helpers and restore state on dispose
+    const manager = {
         update,
+        forceRegisterFetchItems() {
+            try {
+                console.log('[interactiveObjects] Force re-registering all fetchitems...');
+                registerFetchItemsInTree(scene);
+                console.log('[interactiveObjects] Force registration complete. Total interactive:', interactiveObjects.length);
+            } catch (e) {
+                console.error('[interactiveObjects] forceRegisterFetchItems failed:', e);
+            }
+        },
+        respawnFetchItems,
         dispose() {
             domElement.removeEventListener('pointerdown', onPointerDown);
             domElement.removeEventListener('touchstart', onPointerDown);
-            
+
             // Clean up indicators
             indicators.forEach((indicator) => {
                 if (indicator.parentNode) {
@@ -588,8 +873,51 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 }
             });
             indicators.clear();
+            // restore scene.add if we patched it
+            try {
+                if (__originalSceneAdd && scene && scene.add) {
+                    scene.add = __originalSceneAdd;
+                }
+            } catch (e) {}
+
+            // Remove any global event listeners we added for respawn
+            try {
+                if (typeof window !== 'undefined') {
+                    try { window.removeEventListener('boisvert:teleportToStart', _teleportListener); } catch(e) {}
+                    try { window.removeEventListener('boisvert:playerLost', _lostListener); } catch(e) {}
+                    try { window.removeEventListener('boisvert:dlcAreaEntered', _dlcEnterListener); } catch(e) {}
+                }
+            } catch (e) {}
         }
     };
+
+    // Auto-respawn hooks: listen for some common custom events the main app can dispatch.
+    // The main app can dispatch e.g. window.dispatchEvent(new CustomEvent('boisvert:teleportToStart'))
+    // when the player is teleported back to start, or 'boisvert:playerLost' when they lose,
+    // or 'boisvert:dlcAreaEntered' when they enter the DLC area again.
+    let _teleportListener = null;
+    let _lostListener = null;
+    let _dlcEnterListener = null;
+    try {
+        if (typeof window !== 'undefined') {
+            _teleportListener = () => { respawnFetchItems(); };
+            _lostListener = () => { respawnFetchItems(); };
+            _dlcEnterListener = () => { respawnFetchItems(); };
+            window.addEventListener('boisvert:teleportToStart', _teleportListener);
+            window.addEventListener('boisvert:playerLost', _lostListener);
+            window.addEventListener('boisvert:dlcAreaEntered', _dlcEnterListener);
+            if (window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] respawn event listeners added');
+        }
+    } catch (e) {
+        console.warn('[interactiveObjects] failed to add respawn listeners', e);
+    }
+
+    // Expose manager for manual control and debugging
+    try {
+        window.interactiveObjectsManager = manager;
+    } catch (e) {}
+
+    return manager;
 }
 
 /**

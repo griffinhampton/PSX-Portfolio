@@ -16,10 +16,13 @@ class MovementPad {
         this.padElement.appendChild(this.region);
         this.container.appendChild(this.padElement);
 
-        this.regionData = {};
-        this.handleData = {};
-        this.eventRepeatTimeout = null;
-        this.mouseDown = false;
+    this.regionData = {};
+    this.handleData = {};
+    this.eventRepeatTimeout = null;
+    // Track active touch identifier so multiple pads can be used simultaneously
+    this.activePointerId = null;
+    // Separate mouse flag for desktop interactions
+    this.mouseDown = false;
 
         // Basic inline styles so it's usable without CSS
     this.region.style.width = '120px';
@@ -67,23 +70,42 @@ class MovementPad {
             this.update(event.pageX, event.pageY);
         });
 
-        // Touch
+        // Touch — track pointer id for this pad so a second thumb can control rotation
         this.region.addEventListener('touchstart', (event) => {
-            this.mouseDown = true;
+            const t = event.changedTouches && event.changedTouches[0];
+            if (!t) return;
+            this.activePointerId = t.identifier;
             this.handle.style.opacity = 1.0;
-            this.update(event.targetTouches[0].pageX, event.targetTouches[0].pageY);
+            if (event.cancelable) event.preventDefault();
+            this.update(t.pageX, t.pageY);
         }, { passive: false });
 
-        const touchEnd = () => {
-            this.mouseDown = false;
-            this.resetHandlePosition();
+        const touchEnd = (event) => {
+            if (this.activePointerId === null) return;
+            for (let i = 0; i < event.changedTouches.length; i++) {
+                if (event.changedTouches[i].identifier === this.activePointerId) {
+                    this.activePointerId = null;
+                    this.resetHandlePosition();
+                    break;
+                }
+            }
         };
         document.addEventListener('touchend', touchEnd);
         document.addEventListener('touchcancel', touchEnd);
 
         document.addEventListener('touchmove', (event) => {
-            if (!this.mouseDown) return;
-            this.update(event.touches[0].pageX, event.touches[0].pageY);
+            if (this.activePointerId === null) return;
+            // find matching touch
+            let touch = null;
+            for (let i = 0; i < event.touches.length; i++) {
+                if (event.touches[i].identifier === this.activePointerId) {
+                    touch = event.touches[i];
+                    break;
+                }
+            }
+            if (!touch) return;
+            if (event.cancelable) event.preventDefault();
+            this.update(touch.pageX, touch.pageY);
         }, { passive: false });
 
         this.resetHandlePosition();
@@ -151,7 +173,8 @@ class MovementPad {
     sendEvent(dx, dy, middle) {
         if (this.eventRepeatTimeout) clearTimeout(this.eventRepeatTimeout);
 
-        if (!this.mouseDown) {
+        // Only send repeat events while the pad has an active pointer (touch) or mouse is down
+        if (this.activePointerId === null && !this.mouseDown) {
             const stopEvent = new Event('stopMove', { bubbles: false });
             this.padElement.dispatchEvent(stopEvent);
             return;

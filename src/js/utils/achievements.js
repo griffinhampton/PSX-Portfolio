@@ -37,7 +37,7 @@ function updateToggleIcon() {
         if (meta.hasNew) desired = 'src/textures/achievement-new.png';
         else if (meta.seenPopup) desired = 'src/textures/achievement-base.png';
 
-    console.log('[achievements] updateToggleIcon meta=', meta, 'desired=', desired, 'toggleBtn=', !!toggleBtn, 'toggleImg=', !!toggleImg);
+    
 
         if (toggleImg) {
             // Try to set img src; if it errors, fallback to button background
@@ -365,7 +365,10 @@ export function registerDefaultAchievements() {
         { id: 'watched_screen', title: 'Film Critic', description: 'You played the video on the TV.' },
         { id: 'visited_first_dlc', title: 'Where am I..?', description: 'You traveled to the first area of the DLC.' },
         { id: 'clicked_boisvert', title: 'Hello, Room', description: 'You clicked on the entity.' },
-        { id: 'master_interactor', title: 'Sleuth', description: 'You investigated all interactive objects.' }
+        { id: 'master_interactor', title: 'Sleuth', description: 'You investigated all interactive objects.' },
+        { id: 'game_start', title: 'Let the Hunt Begin', description:'You initiated the game with Room.'},
+        { id: 'game_lost', title: 'You Died...', description: 'You lost the game with Room.' },
+        { id: 'game_won', title: 'Nightmare Slain', description:'You won the game with Room.'},
     ];
     for (const a of defaults) achievementsMap.set(a.id, a);
     for (const a of extras) achievementsMap.set(a.id, a);

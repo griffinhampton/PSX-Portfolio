@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import gsap from 'gsap';
-import { updateParticles } from "../particles/particles.js";
 
 /**
  * Create and start the animation loop
@@ -21,7 +20,6 @@ export function createAnimationLoop({
     controls,
     qualitySettings,
     lights,
-    particleArrays,
     models,
     updatePositionInfo,
     orbManager,
@@ -62,29 +60,18 @@ export function createAnimationLoop({
             }
         }
 
-        // Update mobile spotlight - only on mobile, points at boisvert when camera moves (not inside)
-        if (qualitySettings.isMobile && mobileSpotlight) {
-            // Update spotlight position to camera
-            mobileSpotlight.position.copy(window.camera.position);
-            
-            // Get boisvert's position from the teleporter
-            if (window.boisvertTeleporter && window.boisvertTeleporter.getBoisvertPosition) {
-                const boisvertPos = window.boisvertTeleporter.getBoisvertPosition();
-                
-                // Only update target if we're not at the last position (inside)
-                const isAtLastPosition = orbManager && orbManager.isAtLastPosition();
-                
-                if (boisvertPos && !isAtLastPosition) {
-                    mobileSpotlight.target.position.copy(boisvertPos);
-                    mobileSpotlight.target.updateMatrixWorld();
-                }
-            }
-        }
+        // Mobile dynamic spotlight intentionally disabled — no mobile flashlight effects.
         
         // Update falling snow particles - stop at last position (works on both desktop and mobile)
-        if (particleArrays) {
-            const shouldUpdateParticles = !orbManager || !orbManager.isAtLastPosition();
-            updateParticles(particleArrays, undefined, shouldUpdateParticles);
+        try {
+            const currentParticleArrays = (typeof window !== 'undefined' && window.particleArrays) ? window.particleArrays : null;
+            const particleUpdater = (typeof window !== 'undefined' && typeof window.updateParticles === 'function') ? window.updateParticles : null;
+            if (currentParticleArrays && particleUpdater) {
+                const shouldUpdateParticles = !orbManager || !orbManager.isAtLastPosition();
+                particleUpdater(currentParticleArrays, undefined, shouldUpdateParticles);
+            }
+        } catch (e) {
+            // ignore particle update errors
         }
         
         // Update controls (required when damping is enabled)
@@ -193,10 +180,15 @@ export function createAnimationLoop({
         } catch (e) {}
         
         // Render using composer for post-processing, or fallback to renderer
-        if (composer) {
-            composer.render();
-        } else {
-            renderer.render(window.scene, window.camera);
+        try {
+            const activeComposer = (typeof window !== 'undefined' && window.composer) ? window.composer : composer;
+            if (activeComposer) {
+                activeComposer.render();
+            } else {
+                renderer.render(window.scene, window.camera);
+            }
+        } catch (e) {
+            try { renderer.render(window.scene, window.camera); } catch (err) { /* swallow */ }
         }
         
         // Render CSS3D for YouTube screen
