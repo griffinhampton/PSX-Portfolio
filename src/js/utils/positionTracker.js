@@ -7,8 +7,27 @@ export function setupPositionTracker(qualitySettings) {
     const allMeshes = [];
     let positionInfoDiv = null;
 
-    if (qualitySettings.enablePositionTracker) {
-        positionInfoDiv = document.getElementById('positionInfo');
+    // Always grab the element so the console toggle can control it, but respect
+    // the qualitySettings.enablePositionTracker flag when updating content.
+    positionInfoDiv = document.getElementById('positionInfo');
+
+    // Console-controlled visibility flag. Default to false so the div is hidden
+    // unless a developer explicitly enables it via `seePositionInfo(true)`.
+    if (typeof window !== 'undefined') {
+        if (typeof window.__SEE_POSITION_INFO === 'undefined') window.__SEE_POSITION_INFO = false;
+
+        // expose a simple console API to toggle the position info div
+        window.seePositionInfo = function enablePositionInfo(val) {
+            try {
+                window.__SEE_POSITION_INFO = !!val;
+                const el = document.getElementById('positionInfo');
+                if (el) {
+                    el.style.display = window.__SEE_POSITION_INFO ? 'block' : 'none';
+                }
+            } catch (e) {
+                // no-op in non-browser environments
+            }
+        };
     }
 
     /**
@@ -17,7 +36,10 @@ export function setupPositionTracker(qualitySettings) {
      * @param {THREE.Vector2} mouse - The mouse position vector
      */
     function updatePositionInfo(raycaster, mouse) {
-        if (!qualitySettings.enablePositionTracker || !positionInfoDiv) return;
+    // Only update if the position tracker feature is enabled AND the
+    // developer has explicitly allowed the info to be shown via the
+    // console toggle seePositionInfo(true).
+    if (!qualitySettings.enablePositionTracker || !positionInfoDiv || (typeof window !== 'undefined' && !window.__SEE_POSITION_INFO)) return;
         
         raycaster.setFromCamera(mouse, window.camera);
         

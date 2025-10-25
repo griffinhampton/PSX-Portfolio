@@ -361,17 +361,49 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                 // If the global helper exists we cannot reliably know when navigation completes,
                 // so set a pending target and enable walk mode once the camera reaches it.
                 pendingWalkTarget = new THREE.Vector3(target[0], target[1], target[2]);
-                try { window.navigateToPosition(target, 30); } catch (e) { /* fallback below will handle */ }
-            } else {
-                // Fallback: animate camera directly and enable walk mode onComplete
-                gsap.to(camera.position, {
-                    x: target[0], y: target[1], z: target[2], duration: 2, ease: 'power2.inOut',
+                try { gsap.to(camera.position, {
+                    x: target[0], y: target[1], z: target[2], duration: .4, ease: 'power2.inOut',
                     onComplete: () => {
                         if (window && window.flashlight) window.flashlight.intensity = 30;
                         // After arriving, enable walk mode around this target (PC only)
                         try { enableWalkMode(new THREE.Vector3(target[0], target[1], target[2])); } catch (e) {}
+
+                        // Also smoothly orient the camera to look forwards (level view)
+                        try {
+                            // Compute a point a short distance in front of the camera on world -Z
+                            const lookTarget = new THREE.Vector3(camera.position.x, camera.position.y, camera.position.z - 1);
+                            // Build target quaternion that looks at lookTarget
+                            const lookAtMatrix = new THREE.Matrix4();
+                            lookAtMatrix.lookAt(camera.position, lookTarget, camera.up);
+                            const targetQuat = new THREE.Quaternion();
+                            targetQuat.setFromRotationMatrix(lookAtMatrix);
+
+                            // Smoothly slerp from current to target quaternion
+                            const startQuat = camera.quaternion.clone();
+                            gsap.to({ t: 0 }, {
+                                t: 1,
+                                duration: 0.6,
+                                ease: 'power2.inOut',
+                                onUpdate() {
+                                    camera.quaternion.slerpQuaternions(startQuat, targetQuat, this.targets()[0].t);
+                                    // If controls target exists, keep it roughly aligned
+                                    if (controls && controls.target && typeof controls.target.copy === 'function') {
+                                        // Keep control target in front of camera at same forward offset
+                                        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).multiplyScalar(2);
+                                        const ctrlTarget = camera.position.clone().add(forward);
+                                        controls.target.copy(ctrlTarget);
+                                    }
+                                }
+                            });
+                        } catch (e) {
+                            // ignore orientation failures
+                        }
                     }
-                });
+                }); } catch (e) { /* fallback below will handle */ }
+            } else {
+                window.navigateToPosition(target, 30);
+                // Fallback: animate camera directly and enable walk mode onComplete
+                
             }
             // Unlock Boisvert click achievement
             try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_boisvert'); } catch (e) {}

@@ -68,28 +68,6 @@ export function getMuteState() {
     return isMuted;
 }
 
-/**
- * Setup the mute button in the UI
- */
-export function setupMuteButton() {
-    const muteButton = document.getElementById('muteButton');
-    const speakerIcon = muteButton.querySelector('.speaker-icon');
-    const muteIcon = muteButton.querySelector('.mute-icon');
-
-    if (!muteButton) return;
-
-    muteButton.addEventListener('click', () => {
-        const newMuteState = toggleMute();
-        
-        // Update button appearance
-        if (newMuteState) {
-            muteButton.classList.add('muted');
-            speakerIcon.style.display = 'none';
-            muteIcon.style.display = 'block';
-        } else {
-            muteButton.classList.remove('muted');
-            speakerIcon.style.display = 'block';
-            muteIcon.style.display = 'none';
-        }
-    });
-}
+// NOTE: The UI mute button was removed from the markup. The audio controller
+// continues to provide programmatic control via registerVideo/unregisterVideo,
+// muteAll/unmuteAll/toggleMute/getMuteState for internal modules (e.g. video textures).

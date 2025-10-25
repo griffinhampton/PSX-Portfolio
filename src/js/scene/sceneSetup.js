@@ -9,10 +9,14 @@ export function setupScene(qualitySettings) {
     const w = window.innerWidth;
     const h = window.innerHeight;
     
-    // Set up renderer
-    const renderer = new THREE.WebGLRenderer({antialias: qualitySettings.antialias});
+    // Set up renderer with alpha so DOM behind the canvas can show through
+    // (this allows a DOM watermark behind the canvas to be visible and
+    // be occluded by rendered 3D content)
+    const renderer = new THREE.WebGLRenderer({antialias: qualitySettings.antialias, alpha: true});
     renderer.setSize(w, h);
-    renderer.setClearColor(0x000000, .95);
+    // Use a fully transparent clear color so DOM elements behind the canvas
+    // can be visible where the WebGL scene doesn't draw over them.
+    renderer.setClearColor(0x000000, 0);
     document.body.appendChild(renderer.domElement);
 
     // Enable shadows - only on desktop

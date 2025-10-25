@@ -17,16 +17,26 @@
 		</script>
   </head>
   <body>
-    <!-- Welcome Popup -->
+    <!-- Canvas watermark: drawn under the canvas so 3D content covers it -->
+    <div id="canvasWatermark" aria-hidden="true">
+      <div class="watermark-title">GRIFFIN HAMPTON</div>
+      <div class="watermark-sub">CS MAJOR - CODING CONTRACTOR</div>
+    </div>
+    
+    <!-- Welcome Popup (restyled to match other popup cards) -->
     <div id="welcomePopup" class="welcome-popup" style="display: none;">
-      <div class="welcome-card">
-        <div class="welcome-glitch" style="size: 50px;">⚠</div>
-        <h2 class="welcome-title">There's something in these woods...</h2>
-        <div class="welcome-body">
-          <p class="welcome-text">Click and drag to look around!!! </p>
-          <p class="welcome-text">Click the blue orbs to move, and click anything with a red exclaimation point over it.</p>
+  <div class="popup-card">
+        <button class="popup-close" aria-label="Close" style="display:none;">×</button>
+        <div class="popup-header">
+          <div class="welcome-glitch" style="font-size:26px;">⚠</div>
+          <span class="popup-title">There's something in these woods...</span>
         </div>
-        <button class="welcome-button" id="welcomeButton">ENTER THE WOODS ></button>
+        <div class="popup-body">
+          <p class="popup-text" style="color:red;text-align: center;">Click and drag to look around!!!</p>
+          <p class="popup-text" style="text-align: center;">Click the blue orbs to move, and click anything with a red exclaimation point over it.</p>
+          <div style="height:10px"></div>
+          <button id="welcomeButton" class="popup-return-btn">ENTER THE WOODS &gt;</button>
+        </div>
       </div>
     </div>
 
@@ -46,11 +56,11 @@
     <nav class="navbar">
       <div class="navbar-menu">
         <button class="nav-button" id="navBackToStart" data-nav="start">
-          <span class="nav-icon">↺</span>
+          <img src="src/textures/reset-nav.png" alt="Reset" class="nav-icon" />
           <span class="nav-text">RESET</span>
         </button>
         <button class="nav-button" id="navToCabin" data-nav="cabin">
-          <span class="nav-icon">⌂</span>
+          <img src="src/textures/cabin-nav.png" alt="Cabin" class="nav-icon" />
           <span class="nav-text">CABIN</span>
         </button>
       </div>
@@ -138,25 +148,18 @@
     </div>
 
     <div id="positionInfo">Hover over objects to see position</div>
-    <button id="muteButton" class="mute-button" aria-label="Mute/Unmute audio">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="speaker-icon">
-        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" class="sound-wave"></path>
-        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" class="sound-wave"></path>
-      </svg>
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mute-icon" style="display: none;">
-        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-        <line x1="23" y1="9" x2="17" y2="15"></line>
-        <line x1="17" y1="9" x2="23" y2="15"></line>
-      </svg>
+  <!-- Mute control removed per UX request -->
+  <!-- Bottom-right controls (settings + achievements) -->
+  <!-- These will sit above the canvas in the bottom-right corner -->
+  <div id="cornerControls" class="corner-controls">
+    <button class="control-button" id="achievementsToggle" aria-label="Achievements">
+      <img src="src/textures/achievement-base.png" alt="Achievements" class="nav-icon" />
     </button>
-    <!-- Settings button -->
-    <button id="settingsButton" class="mute-button" aria-label="Settings">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="settings-icon">
-        <circle cx="12" cy="12" r="3"></circle>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06A2 2 0 1 1 2.7 17.7l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09c.67 0 1.24-.4 1.51-1a1.65 1.65 0 0 0-.33-1.82L4.3 4.7A2 2 0 1 1 7.12 1.87l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V1a2 2 0 1 1 4 0v.09c0 .67.4 1.24 1 1.51h.09c.67 0 1.24.4 1.51 1a1.65 1.65 0 0 0 .33 1.82l.06.06A2 2 0 1 1 19.4 6.6l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .67.4 1.24 1 1.51H21a2 2 0 1 1 0 4h-.09c-.67 0-1.24.4-1.51 1z"></path>
-      </svg>
+
+    <button id="settingsButton" class="control-button" aria-label="Settings">
+      <img src="src/textures/settings-nav.png" alt="Settings" class="nav-icon" />
     </button>
+  </div>
     <!-- Settings panel (hidden by default) -->
     <div id="settingsPanel" class="settings-panel" style="display:none; position:fixed; right:16px; bottom:72px; z-index:10000; background:rgba(0,0,0,0.9); padding:14px; border-radius:10px; color:#fff; width:260px; box-shadow:0 6px 18px rgba(0,0,0,0.6);">
       <button id="settingsCloseBtn" class="popup-close" aria-label="Close" style="position:absolute;right:8px;top:6px;background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;">×</button>
@@ -164,16 +167,10 @@
         <label for="dragSpeedRange" style="font-size:13px;display:block;margin-bottom:6px;">Drag speed: <span id="dragSpeedValue">0.002</span></label>
         <input id="dragSpeedRange" type="range" min="0.0005" max="0.01" step="0.0001" value="0.002" style="width:100%;" />
         <div style="height:12px"></div>
-        <label for="muteCheckbox" style="font-size:13px;display:flex;align-items:center;gap:8px;cursor:pointer;">
-          <input id="muteCheckbox" type="checkbox" style="transform:scale(1.1);margin:0;" />
-          Mute audio
-        </label>
+        <!-- Mute checkbox removed (no-op audio control) -->
       </div>
     </div>
-    <!-- Achievements toggle button -->
-    <button id="achievementsToggle" class="mute-button" aria-label="Achievements">
-      <img src="src/textures/achievement-base.png" alt="Achievements" style="width:20px;height:20px;object-fit:contain;"/>
-    </button>
+  <!-- Achievements toggle moved into navbar -->
     <script type="module" src="index.js"></script>
     <script>
       // Show resume image popup

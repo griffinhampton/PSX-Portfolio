@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import gsap from 'gsap';
 import { updateParticles } from "../particles/particles.js";
 
 /**
@@ -108,6 +109,65 @@ export function createAnimationLoop({
         // Update Boisvert teleporter
         if (window.boisvertTeleporter && typeof window.boisvertTeleporter.update === 'function') {
             window.boisvertTeleporter.update();
+        }
+
+        // Collision: if player walks into the backroom-light-door, teleport them to the last navigation position
+        try {
+            // Lazy-find the door object to avoid traversing every frame
+            if (!animate._backroomDoor) {
+                try {
+                    animate._backroomDoor = window.scene ? window.scene.getObjectByName('backroom-light-door') : null;
+                    // If direct getObjectByName fails (name may be on a child), fall back to traverse
+                    if (!animate._backroomDoor && window.scene) {
+                        window.scene.traverse((c) => { if (!animate._backroomDoor && c.name === 'backroom-light-door') animate._backroomDoor = c; });
+                    }
+                } catch (e) { animate._backroomDoor = null; }
+            }
+
+            const door = animate._backroomDoor;
+            if (door && window.camera && navigationPositions && navigationPositions.length) {
+                // Compute a simple proximity test using door world position
+                const doorPos = new THREE.Vector3();
+                door.getWorldPosition(doorPos);
+                const camPos = window.camera.position;
+                const dx = camPos.x - doorPos.x;
+                const dy = camPos.y - doorPos.y;
+                const dz = camPos.z - doorPos.z;
+                const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+                const DOOR_TRIGGER_DISTANCE = 0.9; // tuned threshold for walking into door
+                // cooldown to avoid retrigger storms
+                const now = Date.now();
+                if (dist <= DOOR_TRIGGER_DISTANCE && (!animate._doorLastTriggered || now - animate._doorLastTriggered > 1500)) {
+                    // Teleport to last navigation position
+                    try {
+                        animate._doorLastTriggered = now;
+                        const lastIdx = navigationPositions.length - 1;
+                        const target = navigationPositions[lastIdx];
+                        if (target && target.length >= 3) {
+                            // Use a short tween so it feels like a portal/transition
+                            gsap.killTweensOf(window.camera.position);
+                            gsap.to(window.camera.position, {
+                                x: target[0],
+                                y: target[1],
+                                z: target[2],
+                                duration: 0,
+                                ease: 'power2.inOut',
+                                onComplete: () => {
+                                    // Ensure orb manager updates visible orbs / state
+                                    try { if (orbManager && typeof orbManager.update === 'function') orbManager.update(); } catch (e) {}
+                                    // mark arrival so other logic (achievements) can react
+                                    try { window.dispatchEvent(new CustomEvent('orb:arrived', { detail: { index: lastIdx } })); } catch (e) {}
+                                }
+                            });
+                        }
+                    } catch (e) {
+                        console.warn('[collision] failed to teleport on door collision', e);
+                    }
+                }
+            }
+        } catch (e) {
+            // swallow errors to avoid breaking the main loop
         }
 
         // Detect arrival at the last base navigation position (so achievements work even when user navigates via navbar)

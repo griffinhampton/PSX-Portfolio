@@ -14,7 +14,7 @@ import { setupInteractiveObjects } from "./src/js/utils/interactiveObjects.js";
 import { setupCameraInteractiveObjects } from "./src/js/utils/cameraInteractiveObjects.js";
 import { setupScreenVideoTexture } from "./src/js/utils/screenVideoTexture.js";
 import { initializeCursorManager } from "./src/js/utils/cursorManager.js";
-import { setupMuteButton, getMuteState, toggleMute } from "./src/js/utils/audioController.js";
+// mute UI removed: audioController UI setup/imports cleaned from index.js
 import { setupNavbar } from "./src/js/utils/navbar.js";
 import { initLoadingScreen } from "./src/js/utils/loadingScreen.js";
 import { setupBoisvertTeleporter } from "./src/js/utils/boisvertTeleporter.js";
@@ -159,8 +159,6 @@ if (controls && typeof controls.setShouldDisableLookFn === 'function') {
 // Initialize unified cursor manager
 initializeCursorManager(renderer.domElement, camera);
 
-// Setup mute button
-setupMuteButton();
 
 
 const BASE_NAVIGATION_POSITIONS = [
@@ -180,34 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const dragRange = document.getElementById('dragSpeedRange');
         const dragVal = document.getElementById('dragSpeedValue');
 
-        // Mute checkbox wiring
-        const muteCheckbox = document.getElementById('muteCheckbox');
-        const muteBtn = document.getElementById('muteButton');
-        const speakerIcon = muteBtn ? muteBtn.querySelector('.speaker-icon') : null;
-        const muteIcon = muteBtn ? muteBtn.querySelector('.mute-icon') : null;
-        try {
-            if (muteCheckbox) {
-                // Initialize from current mute state
-                const currentlyMuted = typeof getMuteState === 'function' ? getMuteState() : false;
-                muteCheckbox.checked = !!currentlyMuted;
-                if (muteBtn) {
-                    if (currentlyMuted) { muteBtn.classList.add('muted'); if (speakerIcon) speakerIcon.style.display = 'none'; if (muteIcon) muteIcon.style.display = 'block'; }
-                    else { muteBtn.classList.remove('muted'); if (speakerIcon) speakerIcon.style.display = 'block'; if (muteIcon) muteIcon.style.display = 'none'; }
-                }
-
-                muteCheckbox.addEventListener('change', () => {
-                    try {
-                        const newState = toggleMute(); // toggles and returns new state
-                        // sync checkbox (toggleMute already flipped it) and button appearance
-                        if (muteBtn) {
-                            if (newState) { muteBtn.classList.add('muted'); if (speakerIcon) speakerIcon.style.display = 'none'; if (muteIcon) muteIcon.style.display = 'block'; }
-                            else { muteBtn.classList.remove('muted'); if (speakerIcon) speakerIcon.style.display = 'block'; if (muteIcon) muteIcon.style.display = 'none'; }
-                        }
-                        try { muteCheckbox.checked = !!newState; } catch (e) {}
-                    } catch (e) { console.warn('[settings] mute toggle failed', e); }
-                });
-            }
-        } catch (e) {}
+        // Mute control removed: no mute checkbox wiring
 
         if (settingsBtn && settingsPanel) {
             settingsBtn.addEventListener('click', () => {
