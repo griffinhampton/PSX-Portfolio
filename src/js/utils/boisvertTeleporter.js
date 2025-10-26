@@ -183,6 +183,8 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     let _countdownStart = 0;
     let _countdownRAF = null;
     let _countdownCompleted = false;
+    // Track whether lookAtBoisvert has been invoked for the first time
+    let _lookAtBoisvertSeen = false;
 
     // Chase constants
     const CHASE_UPDATE_HZ = 6;
@@ -1828,6 +1830,131 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                 }
             }
         } catch(e) {}
+
+        // If this is the first time lookAtBoisvert is called, ask the user if they'd
+        // like to go to the portfolio (WASD) additional position. We only show this
+        // if the user is not already at that additional navigation point.
+        try {
+            if (!_lookAtBoisvertSeen) {
+                _lookAtBoisvertSeen = true;
+                const additional = (window.ADDITIONAL_NAVIGATION_POSITIONS && Array.isArray(window.ADDITIONAL_NAVIGATION_POSITIONS)) ? window.ADDITIONAL_NAVIGATION_POSITIONS : (scene && scene.userData && Array.isArray(scene.userData.additionalNavigationPositions) ? scene.userData.additionalNavigationPositions : null);
+                if (additional && additional.length > 0) {
+                    const wasdTarget = additional[0];
+                    if (wasdTarget && wasdTarget.length >= 3) {
+                        const dx = camera.position.x - wasdTarget[0];
+                        const dy = camera.position.y - wasdTarget[1];
+                        const dz = camera.position.z - wasdTarget[2];
+                        const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                        // If the user is not already at the WASD point (use a sensible threshold)
+                        if (dist > Math.max(POSITION_THRESHOLD, 0.9)) {
+                            // Build a popup matching the welcome popup style asking to go to portfolio
+                            try {
+                                // If an element already exists, don't recreate
+                                if (!document.getElementById('portfolioPopup')) {
+                                    const wrap = document.createElement('div');
+                                    wrap.id = 'portfolioPopup';
+                                    wrap.className = 'welcome-popup';
+                                    wrap.style.display = 'flex';
+                                    wrap.style.position = 'fixed';
+                                    wrap.style.left = '0';
+                                    wrap.style.top = '0';
+                                    wrap.style.width = '100%';
+                                    wrap.style.height = '100%';
+                                    wrap.style.zIndex = '9999';
+                                    // move popup lower on the screen and align towards top
+                                    // Position the popup near the bottom of the viewport (above nav buttons)
+                                    wrap.style.alignItems = 'flex-end';
+                                    wrap.style.justifyContent = 'center';
+                                    wrap.style.paddingBottom = '80px';
+
+                                    const card = document.createElement('div');
+                                    card.className = 'popup-card';
+                                    // slightly smaller than the main welcome popup
+                                    card.style.maxWidth = '520px';
+                                    card.style.textAlign = 'center';
+                                    card.style.margin = '0 12px';
+
+                                    const header = document.createElement('div');
+                                    header.className = 'popup-header';
+                                    const glitch = document.createElement('div');
+                                    glitch.className = 'welcome-glitch';
+                                    glitch.style.fontSize = '26px';
+                                    glitch.innerText = '⚠';
+                                    const title = document.createElement('span');
+                                    title.className = 'popup-title';
+                                    title.innerText = 'The entity invites you to visit the portfolio section..';
+                                    header.appendChild(glitch);
+                                    header.appendChild(title);
+
+                                    const body = document.createElement('div');
+                                    body.className = 'popup-body';
+                                    const p = document.createElement('p');
+                                    p.className = 'popup-text';
+                                    p.style.textAlign = 'center';
+                                    p.style.color = 'black';
+                                    p.innerText = 'Would you like to go to the portfolio section now? This enables WASD movement. ';
+                                    body.appendChild(p);
+                                    
+                                    const p2 = document.createElement('p2');
+                                    p2.className = 'popup-text';
+                                    p2.style.textAlign = 'center';
+                                    p2.style.color = 'red';
+                                    p2.innerText = 'If not, you can click on the entity at any point to go to the portfolio section!';
+                                    body.appendChild(p2);
+
+                                    const btnNo = document.createElement('button');
+                                    btnNo.id = 'portfolioNoBtn';
+                                    btnNo.className = 'popup-return-btn';
+                                    btnNo.innerText = 'LATER';
+
+                                    const btnYes = document.createElement('button');
+                                    btnYes.id = 'portfolioYesBtn';
+                                    btnYes.className = 'popup-return-btn';
+                                    btnYes.innerText = 'YES - TAKE ME THERE';
+                                    btnYes.style.marginRight = '8px';
+
+                                    
+
+                                    const btnWrap = document.createElement('div');
+                                    btnWrap.style.marginTop = '12px';
+                                    btnWrap.appendChild(btnNo);
+                                    btnWrap.appendChild(btnYes);
+                                    body.appendChild(btnWrap);
+
+                                    card.appendChild(header);
+                                    card.appendChild(body);
+                                    wrap.appendChild(card);
+                                    document.body.appendChild(wrap);
+
+                                    // Hook buttons
+                                    btnYes.addEventListener('click', () => {
+                                        try {
+                                            // Reuse existing click behavior to navigate to the WASD additional position
+                                            try { onBoisvertClick(); } catch (e) {
+                                                // Fallback: directly move camera to the target
+                                                try {
+                                                    gsap.to(camera.position, { x: wasdTarget[0], y: wasdTarget[1], z: wasdTarget[2], duration: 0.5, ease: 'power2.inOut', onComplete: () => { try { enableWalkMode(new THREE.Vector3(wasdTarget[0], wasdTarget[1], wasdTarget[2])); } catch(e){} } });
+                                                } catch (ee) {}
+                                            }
+                                        } catch (e) {}
+                                        // remove popup
+                                        try { wrap.parentNode && wrap.parentNode.removeChild(wrap); } catch (e) {}
+                                    });
+
+                                    btnNo.addEventListener('click', () => {
+                                        try { wrap.parentNode && wrap.parentNode.removeChild(wrap); } catch (e) {}
+                                    });
+                                }
+                            } catch (e) {
+                                console.warn('[boisvertTeleporter] failed to show portfolio popup', e);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            // ignore popup failures
+        }
     }
     
     function isChildOfBoisvert(object) {
