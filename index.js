@@ -195,6 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const current = window.controls.getDragSpeed();
                     dragRange.value = current;
                     dragVal.innerText = Number(current).toFixed(4);
+                        try { window.__rotationPadSensitivity = Number(current) * 3; } catch (e) {}
                 }
             } catch (e) {}
 
@@ -207,10 +208,38 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else if (window.fpControls && typeof window.fpControls.setDragSpeed === 'function') {
                         window.fpControls.setDragSpeed(Number(v));
                     }
+                    // Also update mobile rotation pad sensitivity as a heuristic mapping.
+                    // Map drag speed to rotation sensitivity so default 0.002 -> ~0.006 (multiplier 3).
+                    try { window.__rotationPadSensitivity = Number(v) * 3; } catch (e) {}
                 } catch (err) { console.warn('[settings] failed to set drag speed', err); }
             });
         }
-        // Achievements panel close button if present
+
+        // Master volume slider wiring
+        try {
+            const masterRange = document.getElementById('masterVolumeRange');
+            const masterVal = document.getElementById('masterVolumeValue');
+            if (masterRange && masterVal) {
+                // Load stored value (normalized 0..1)
+                let stored = 1;
+                try { const s = localStorage.getItem('masterVolume'); if (s !== null) { stored = Number(s); if (isNaN(stored)) stored = 1; } } catch (e) {}
+                stored = Math.max(0, Math.min(1, stored));
+                masterRange.value = Math.round(stored * 100);
+                masterVal.innerText = `${Math.round(stored * 100)}%`;
+                // Apply initially
+                try { setMasterVolume(stored); } catch (e) {}
+
+                masterRange.addEventListener('input', (e) => {
+                    try {
+                        const percent = Number(e.target.value);
+                        const norm = Math.max(0, Math.min(100, percent)) / 100;
+                        masterVal.innerText = `${Math.round(norm * 100)}%`;
+                        setMasterVolume(norm);
+                    } catch (ee) {}
+                });
+            }
+    } catch (e) {}
+    // Achievements panel close button if present
         try {
             const achClose = document.getElementById('achievementsCloseBtn');
             const achPopup = document.getElementById('achievementsPopup');
@@ -229,10 +258,29 @@ function initUI() {
         const imagePopup = document.getElementById('resumeImagePopup');
         const closeBtn = imagePopup ? imagePopup.querySelector('.popup-close') : null;
         if (showBtn && imagePopup) {
-            showBtn.addEventListener('click', function() { imagePopup.style.display = 'block'; });
+            showBtn.addEventListener('click', function() {
+                try {
+                    // Make sure the image popup appears centered and above the resume popup
+                    // Reset any inline positioning left by previous drags so it recenters
+                    imagePopup.style.display = 'block';
+                    imagePopup.style.top = '50%';
+                    imagePopup.style.left = '50%';
+                    imagePopup.style.transform = 'translate(-50%, -50%)';
+                    // Set z-index higher than the resume popup (resume popup uses 12000)
+                    imagePopup.style.zIndex = '13000';
+                    // Move focus to close button for accessibility
+                    const c = imagePopup.querySelector('.popup-close'); if (c) c.focus();
+                } catch (e) { console.warn('[resumeImage] show failed', e); }
+            });
         }
         if (closeBtn && imagePopup) {
-            closeBtn.addEventListener('click', function() { imagePopup.style.display = 'none'; });
+            closeBtn.addEventListener('click', function() {
+                try {
+                    imagePopup.style.display = 'none';
+                    // restore default z-index in case drag logic changed it
+                    imagePopup.style.zIndex = '';
+                } catch (e) { console.warn('[resumeImage] close failed', e); }
+            });
         }
 
         // Drag and drop for all .draggable popups
@@ -300,6 +348,71 @@ function initUI() {
                     achPopup.style.display = achPopup.style.display === 'block' ? 'none' : 'block';
                 });
             }
+        } catch (e) {}
+
+        // Instructions popup toggle (question-mark button)
+        try {
+            var instrToggle = document.getElementById('instructionsToggle');
+            var instrPopup = document.getElementById('instructionsPopup');
+            if (instrToggle && instrPopup) {
+                instrToggle.addEventListener('click', function() {
+                    instrPopup.style.display = instrPopup.style.display === 'block' ? 'none' : 'block';
+                });
+            }
+            // Close handler for instructions popup
+            var instrClose = document.getElementById('instructionsCloseBtn');
+            if (instrClose && instrPopup) {
+                instrClose.addEventListener('click', function() { instrPopup.style.display = 'none'; });
+            }
+            // Overflow "More" menu wiring (mobile)
+            try {
+                const moreToggle = document.getElementById('moreToggle');
+                const moreMenu = document.getElementById('moreMenu');
+                const moreInstructions = document.getElementById('moreInstructions');
+                const moreSettings = document.getElementById('moreSettings');
+
+                function hideMoreMenu() { if (moreMenu) moreMenu.style.display = 'none'; }
+                function showMoreMenu() { if (moreMenu) moreMenu.style.display = 'flex'; }
+
+                if (moreToggle && moreMenu) {
+                    moreToggle.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        moreMenu.style.display = moreMenu.style.display === 'flex' ? 'none' : 'flex';
+                    });
+                }
+
+                // If the user taps an item, close the menu and forward the action
+                if (moreInstructions && instrPopup) {
+                    moreInstructions.addEventListener('click', function() {
+                        hideMoreMenu();
+                        // toggle instructions popup
+                        instrPopup.style.display = instrPopup.style.display === 'block' ? 'none' : 'block';
+                    });
+                }
+                if (moreSettings) {
+                    moreSettings.addEventListener('click', function() {
+                        hideMoreMenu();
+                        // open settings panel (use existing handler)
+                        try {
+                            const settingsPanel = document.getElementById('settingsPanel');
+                            if (settingsPanel) settingsPanel.style.display = 'block';
+                        } catch (e) {}
+                    });
+                }
+
+                // Close the menu when clicking/tapping outside or pressing Escape
+                document.addEventListener('click', function(e) {
+                    try {
+                        if (!moreMenu || !moreToggle) return;
+                        if (moreMenu.style.display !== 'flex') return;
+                        if (e.target === moreToggle || moreToggle.contains(e.target) || moreMenu.contains(e.target)) return;
+                        hideMoreMenu();
+                    } catch (e) {}
+                });
+                document.addEventListener('keydown', function(ev) {
+                    if (ev.key === 'Escape') hideMoreMenu();
+                });
+            } catch (e) { /* ignore */ }
         } catch (e) {}
     } catch (e) {
         console.warn('[initUI] failed', e);
@@ -404,6 +517,62 @@ function lazyLoadHeavyModules() {
         try { requestIdleCallback(doLoad, { timeout: 2000 }); } catch (e) { setTimeout(doLoad, 2000); }
     } else {
         setTimeout(doLoad, 2000);
+    }
+}
+
+/**
+ * Set master audio volume for all known audio targets.
+ * Accepts a normalized value (0.0 - 1.0) or a percentage (0 - 100).
+ */
+function setMasterVolume(value) {
+    try {
+        let v = Number(value);
+        if (isNaN(v)) return;
+        // Accept percentages
+        if (v > 1) v = v / 100;
+        v = Math.max(0, Math.min(1, v));
+
+        // Persist
+        try { localStorage.setItem('masterVolume', String(v)); } catch (e) {}
+
+        // Update all <audio> elements in the DOM
+        try {
+            const audios = document.querySelectorAll('audio');
+            audios.forEach(a => {
+                try { a.volume = v; } catch (e) {}
+            });
+        } catch (e) {}
+
+        // Update any registered audio objects in a global registry
+        try {
+            if (window.__audioRegistry && typeof window.__audioRegistry.forEach === 'function') {
+                window.__audioRegistry.forEach(a => { try { if (a) a.volume = v; } catch (e) {} });
+            }
+        } catch (e) {}
+
+        // Heuristic: update any window globals that look like Audio objects
+        try {
+            Object.keys(window).forEach(key => {
+                try {
+                    const val = window[key];
+                    if (!val) return;
+                    // HTMLAudioElement
+                    if (val instanceof HTMLAudioElement) {
+                        try { val.volume = v; } catch (e) {}
+                        return;
+                    }
+                    // Plain object with a numeric 'volume' property and a play function
+                    if (typeof val === 'object' && typeof val.volume === 'number' && typeof val.play === 'function') {
+                        try { val.volume = v; } catch (e) {}
+                    }
+                } catch (e) {}
+            });
+        } catch (e) {}
+
+        // Optionally expose current value for other modules
+        try { window.__masterVolume = v; } catch (e) {}
+    } catch (e) {
+        console.warn('[audio] setMasterVolume failed', e);
     }
 }
 

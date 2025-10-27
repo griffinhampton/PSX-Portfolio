@@ -453,6 +453,45 @@ h1, h2, h3, h4, h5, h6 {
   padding: 0 12px;
 }
 
+/* More menu (overflow) - mobile only */
+.more-toggle { /* hidden by default; shown on small screens via media query */
+  display: none;
+}
+
+.more-menu {
+  position: fixed;
+  right: 16px;
+  bottom: 76px; /* appear above the corner controls */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* match settings/achievement panel look */
+  background: rgba(20,20,20,0.95) !important;
+  padding: 8px;
+  border-radius: 0; /* square corners per request */
+  border: 3px solid #ffffff !important;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+  z-index: 10005; /* above rotation pad and settings panel */
+  font-family: 'VT323', monospace !important;
+  color: #ffffff !important;
+}
+
+.more-menu .more-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  color: #fff;
+  font-family: 'VT323', monospace;
+  border: none;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.more-menu .more-item:active { transform: scale(0.995); }
+
 .nav-text {
   font-size: 14px;
   line-height: 1;
@@ -476,6 +515,24 @@ h1, h2, h3, h4, h5, h6 {
   .nav-icon {
     font-size: 18px;
   }
+}
+
+/* On narrow mobile screens, hide individual controls and show the overflow toggle */
+@media (max-width: 420px) {
+  #instructionsToggle, #settingsButton {
+    display: none !important;
+  }
+  #moreToggle { display: inline-flex !important; }
+}
+
+/* Ensure settings panel has square corners */
+#settingsPanel {
+  border-radius: 0 !important;
+  /* Match other dark panels (achievements) so blacks and font look consistent */
+  background: rgba(20,20,20,0.95) !important;
+  border: 3px solid #ffffff !important;
+  font-family: 'VT323', monospace !important;
+  color: #ffffff !important;
 }
 
 /* LinkedIn Popup Card - Retro Paper Style */
@@ -891,7 +948,8 @@ body > canvas {
   bottom: 8%;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 2000;
+  /* Ensure about popups appear above the rotation pad and other overlays */
+  z-index: 12000;
   pointer-events: all;
   animation: floatIn 0.5s ease-out;
 }
@@ -959,32 +1017,7 @@ body > canvas {
   color: #cc0000;
 }
 
-/* Interactive object indicator */
-.interactive-indicator {
-  position: fixed;
-  pointer-events: none;
-  z-index: 1500;
-  font-family: 'VT323', monospace;
-  font-size: 80px;
-  color: #ff0000;
-  text-shadow: 
-    2px 2px 0 rgba(0, 0, 0, 0.8),
-    0 0 10px rgba(255, 0, 0, 0.8);
-  animation: indicatorPulse 1.5s ease-in-out infinite;
-  transform: translate(-50%, -150%);
-  user-select: none;
-}
-
-@keyframes indicatorPulse {
-  0%, 100% {
-    opacity: 1;
-    transform: translate(-50%, -150%) scale(1);
-  }
-  50% {
-    opacity: 0.6;
-    transform: translate(-50%, -160%) scale(1.1);
-  }
-}
+/* Interactive indicators removed — no DOM exclamation markers are used. */
 
 /* Mobile responsive for about popup */
 @media (max-width: 768px) {

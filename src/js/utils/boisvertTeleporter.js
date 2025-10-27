@@ -92,6 +92,10 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                             if (o && o.name) {
                                 const n = o.name.toLowerCase();
                                 if (n.includes('walls') || n.includes('floor') || n.includes('table-top') || n.includes('table')) {
+                                // navigation completed (outer camera tween finished) —
+                                // clear the "going to portfolio" intent so future
+                                // lookAtBoisvert() calls are allowed.
+                                try { _goingToPortfolio = false; } catch (e) {}
                                     colliders.push(o);
                                 }
                             }
@@ -101,7 +105,6 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
 
                 if (colliders.length > 0) {
                     walkCollisionWalls = colliders;
-                    if (window && window.console) console.log('[boisvertTeleporter] registerTablesInTree: registered', uniq.length, 'table nodes, colliders=', colliders.length);
                 } else {
                     walkCollisionWalls = null;
                     if (window && window.console) console.log('[boisvertTeleporter] registerTablesInTree: no colliders found');
@@ -116,7 +119,6 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
 
     // Initial scan and monkey-patch to catch later additions
     try {
-        console.log('[boisvertTeleporter] Starting initial table registration...');
         registerTablesInTree(scene);
     } catch (e) {
         console.error('[boisvertTeleporter] initial registerTablesInTree failed', e);
@@ -137,7 +139,6 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                 }
                 return res;
             };
-            console.log('[boisvertTeleporter] scene.add monkey-patched for table registration');
         }
     } catch (e) {
         console.error('[boisvertTeleporter] failed to monkey-patch scene.add for tables', e);
@@ -206,6 +207,8 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
      */
     function performLoss(reason) {
         try {
+            // If the win sequence has already been triggered, do not perform a loss.
+            try { if (_winTriggered) { try { if (window && window.console) console.warn('[boisvert] performLoss suppressed: win already triggered'); } catch (e) {} return; } } catch (e) {}
             if (update._loseTriggered) return;
             update._loseTriggered = true;
             if (window && window.achievements && typeof window.achievements.unlock === 'function') {
@@ -230,6 +233,11 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                 if (dest && dest.length >= 3) {
                     try {
                         camera.position.set(dest[0], dest[1], dest[2]);
+                        try {
+                            if (typeof window !== 'undefined' && window.__NAV_DEBUG) {
+                                try { console.debug('[boisvert] performLoss: set camera to dest', dest, 'controls.target before copy=', controls && controls.target ? controls.target.clone() : null); } catch (e) {}
+                            }
+                        } catch (e) {}
                         if (controls && controls.target && typeof controls.target.copy === 'function') {
                             controls.target.copy(camera.position);
                         }
@@ -253,6 +261,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             // stop further chase behavior
             try { update._chaseMoveDir = null; } catch (e) {}
             try { update._chaseActive = false; } catch (e) {}
+            try { restoreBackroomsLights(); } catch (e) {}
         } catch (e) {
             // swallow
         }
@@ -317,10 +326,15 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
 
                             if (dest && dest.length >= 3) {
                                 try {
-                                    camera.position.set(dest[0], dest[1], dest[2]);
-                                    if (controls && controls.target && typeof controls.target.copy === 'function') {
-                                        controls.target.copy(camera.position);
-                                    }
+                                        camera.position.set(dest[0], dest[1], dest[2]);
+                                        try {
+                                            if (typeof window !== 'undefined' && window.__NAV_DEBUG) {
+                                                try { console.debug('[boisvert] _chaseUpdate loss: set camera to dest', dest, 'controls.target before copy=', controls && controls.target ? controls.target.clone() : null); } catch (e) {}
+                                            }
+                                        } catch (e) {}
+                                        if (controls && controls.target && typeof controls.target.copy === 'function') {
+                                            controls.target.copy(camera.position);
+                                        }
                                 } catch (e) {}
                             }
 
@@ -1111,10 +1125,10 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
 
             const title = document.createElement('div');
             title.innerText = 'Items';
-            title.style.fontSize = '24px';
+            title.style.fontSize = '36px';
             title.style.marginBottom = '6px';
             title.style.fontWeight = '600';
-            title.style.color = 'red';
+            title.style.color = 'white';
             wrapper.appendChild(title);
 
             const items = [
@@ -1133,9 +1147,9 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                 const lbl = document.createElement('div');
                 lbl.id = `boisvert-item-label-${idx}`;
                 lbl.innerText = labelText;
-                lbl.style.fontSize = '20px';
+                lbl.style.fontSize = '30px';
                 lbl.style.userSelect = 'none';
-                lbl.style.color = 'red';
+                lbl.style.color = 'white';
                 lbl.style.flex = '1';
 
                 // when clicked (for testing) toggle found state and dispatch event
@@ -1213,6 +1227,144 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     // Track item found state and trigger win behavior when all are collected
     let _foundFlags = [false, false, false];
     let _itemChangeListener = null;
+    // Backrooms light color override state
+    const _backroomsOriginalLightStates = new Map();
+    let _backroomsRedActive = false;
+    let _savedFlashlightIntensity = null;
+
+    function setBackroomsLightsRed() {
+        try {
+            if (_backroomsRedActive) return;
+            // Look for lights in scene and change their colors to red, saving originals
+            scene.traverse(obj => {
+                try {
+                    if (!obj || !obj.isLight) return;
+
+                    // Skip flashlight if present (we don't want to tint the player's flashlight)
+                    if (obj.name && obj.name.toLowerCase().includes('flash')) return;
+
+                    // Save original state if not already saved
+                    if (!_backroomsOriginalLightStates.has(obj.uuid)) {
+                        _backroomsOriginalLightStates.set(obj.uuid, {
+                            color: obj.color ? obj.color.clone() : null,
+                            intensity: (typeof obj.intensity === 'number') ? obj.intensity : null,
+                            visible: ('visible' in obj) ? obj.visible : null,
+                            groundColor: obj.groundColor ? obj.groundColor.clone() : null,
+                            skyColor: obj.skyColor ? obj.skyColor.clone() : null
+                        });
+                    }
+
+                    // Apply red tint depending on light type
+                    try {
+                        if (obj.color) obj.color.setHex(0xff0000);
+                    } catch (e) {}
+                    try { if (obj.groundColor) obj.groundColor.setHex(0x330000); } catch (e) {}
+                    try { if (obj.skyColor) obj.skyColor.setHex(0x330000); } catch (e) {}
+                } catch (e) {}
+            });
+
+            // Also, explicitly turn off the player's flashlight if present and save its intensity
+            try {
+                if (typeof window !== 'undefined' && window.flashlight && typeof window.flashlight.intensity === 'number') {
+                    try { _savedFlashlightIntensity = window.flashlight.intensity; } catch (e) {}
+                    try { window.flashlight.intensity = 0; } catch (e) {}
+                }
+            } catch (e) {}
+
+            // As a fallback, try global lights manager on window (if present)
+            try {
+                const gm = (typeof window !== 'undefined') ? (window.lightsManager || window.lights || window.sceneLights || window.lightController) : null;
+                if (gm) {
+                    if (Array.isArray(gm)) {
+                        gm.forEach(l => { try { if (l && l.isLight && !_backroomsOriginalLightStates.has(l.uuid)) { _backroomsOriginalLightStates.set(l.uuid, { color: l.color ? l.color.clone() : null, intensity: typeof l.intensity === 'number' ? l.intensity : null }); if (l.color) l.color.setHex(0xff0000); } } catch(e){} });
+                    } else {
+                        try {
+                            Object.keys(gm).forEach(k => {
+                                const l = gm[k];
+                                try { if (l && l.isLight && !_backroomsOriginalLightStates.has(l.uuid)) { _backroomsOriginalLightStates.set(l.uuid, { color: l.color ? l.color.clone() : null, intensity: typeof l.intensity === 'number' ? l.intensity : null }); if (l.color) l.color.setHex(0xff0000); } } catch(e){}
+                            });
+                        } catch (e) {}
+                    }
+                }
+            } catch (e) {}
+
+            _backroomsRedActive = true;
+        } catch (e) {
+            console.warn('[boisvertTeleporter] setBackroomsLightsRed failed', e);
+        }
+    }
+
+    function restoreBackroomsLights() {
+        try {
+            if (!_backroomsRedActive) return;
+            // Traverse scene and restore saved light states
+            scene.traverse(obj => {
+                try {
+                    if (!obj || !obj.isLight) return;
+                    const saved = _backroomsOriginalLightStates.get(obj.uuid);
+                    if (saved) {
+                        try { if (saved.color && obj.color) obj.color.copy(saved.color); } catch (e) {}
+                        try { if (typeof saved.intensity === 'number' && typeof obj.intensity === 'number') obj.intensity = saved.intensity; } catch (e) {}
+                        try { if (typeof saved.visible === 'boolean') obj.visible = saved.visible; } catch (e) {}
+                        try { if (saved.groundColor && obj.groundColor) obj.groundColor.copy(saved.groundColor); } catch (e) {}
+                        try { if (saved.skyColor && obj.skyColor) obj.skyColor.copy(saved.skyColor); } catch (e) {}
+                    }
+                } catch (e) {}
+            });
+
+            // Also try to restore any lights held in a global manager
+            try {
+                const gm = (typeof window !== 'undefined') ? (window.lightsManager || window.lights || window.sceneLights || window.lightController) : null;
+                if (gm) {
+                    if (Array.isArray(gm)) {
+                        gm.forEach(l => {
+                            try {
+                                const saved = l && l.uuid ? _backroomsOriginalLightStates.get(l.uuid) : null;
+                                if (saved) {
+                                    if (saved.color && l.color) l.color.copy(saved.color);
+                                    if (typeof saved.intensity === 'number' && typeof l.intensity === 'number') l.intensity = saved.intensity;
+                                }
+                            } catch (e) {}
+                        });
+                    } else {
+                        try {
+                            Object.keys(gm).forEach(k => {
+                                const l = gm[k];
+                                try {
+                                    const saved = l && l.uuid ? _backroomsOriginalLightStates.get(l.uuid) : null;
+                                    if (saved) {
+                                        if (saved.color && l.color) l.color.copy(saved.color);
+                                        if (typeof saved.intensity === 'number' && typeof l.intensity === 'number') l.intensity = saved.intensity;
+                                    }
+                                } catch (e) {}
+                            });
+                        } catch (e) {}
+                    }
+                }
+            } catch (e) {}
+
+            // Clear saved states
+            _backroomsOriginalLightStates.clear();
+            // Restore flashlight intensity if we saved it
+            try {
+                if (typeof window !== 'undefined' && window.flashlight && typeof _savedFlashlightIntensity === 'number') {
+                    try { window.flashlight.intensity = _savedFlashlightIntensity; } catch (e) {}
+                    _savedFlashlightIntensity = null;
+                }
+            } catch (e) {}
+            _backroomsRedActive = false;
+        } catch (e) {
+            console.warn('[boisvertTeleporter] restoreBackroomsLights failed', e);
+        }
+    }
+    // Flag set when the user clicks Boisvert to go to the portfolio/additional nav.
+    // Used to suppress lookAtBoisvert() for that one intentional navigation.
+    let _goingToPortfolio = false;
+    // Navigation helpers to avoid competing GSAP tweens and stale completions
+    let currentCameraTween = null;
+    let currentOrientationTween = null;
+    let isNavigating = false;
+    let navigationToken = 0; // incrementing token to identify latest navigation
     try {
         _itemChangeListener = function(ev) {
             try {
@@ -1255,6 +1407,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                     } catch (e) {}
 
                     try { showWinOverlay(); } catch (e) {}
+                    try { restoreBackroomsLights(); } catch (e) {}
                 }
             } catch (e) {}
         };
@@ -1374,6 +1527,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                             try {
                                 if (typeof update === 'function') update._chaseActive = true;
                             } catch(e) {}
+                            try { setBackroomsLightsRed(); } catch (e) {}
                             // Make the player look at Boisvert when the chase/countdown completes
                             try { lookAtBoisvert(); } catch (e) {}
                             // show game intro and items list when chase starts
@@ -1716,6 +1870,9 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     function disableWalkMode() {
         if (!walkModeActive) return;
         walkModeActive = false;
+        // leaving walk mode implies we're no longer in the special "going to
+        // portfolio" intent state.
+        _goingToPortfolio = false;
         walkKeys = { forward: 0, back: 0, left: 0, right: 0 };
         if (enableWalkMode._cleanup) {
             try {
@@ -1728,7 +1885,156 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
         destroyMovementPad();
     }
 
-    function teleportToPosition(targetPosition, index) {
+    // Start a safe navigation tween that kills any existing camera/orientation
+    // tweens, uses a navigation token to avoid stale onComplete calls, and
+    // exposes an onArrived hook.
+    function startNavigationTo(position, index, opts = {}) {
+        // Prevent navigation while a chase is active
+        try {
+            if (update && update._chaseActive) {
+                if (window && window.console) console.warn('[boisvertTeleporter] navigation blocked: chase active');
+                return;
+            }
+            if (typeof window !== 'undefined' && window.boisvertGame && (window.boisvertGame.isChasing || window.boisvertGame.chaseActive || window.boisvertGame.inChase)) {
+                if (window && window.console) console.warn('[boisvertTeleporter] navigation blocked: boisvertGame indicates chase');
+                return;
+            }
+        } catch (e) {}
+        // normalize position
+        const posArr = Array.isArray(position) ? position : (position && typeof position.x === 'number' ? [position.x, position.y, position.z] : null);
+        if (!posArr) return;
+
+        // increment token for this navigation
+        navigationToken++;
+        const myToken = navigationToken;
+
+        // Kill any ongoing tweens that affect camera position/orientation
+        try {
+            if (currentCameraTween && typeof currentCameraTween.kill === 'function') currentCameraTween.kill();
+        } catch (e) {}
+        try { gsap.killTweensOf(camera.position); } catch (e) {}
+        try { if (currentOrientationTween && typeof currentOrientationTween.kill === 'function') currentOrientationTween.kill(); } catch (e) {}
+        try { gsap.killTweensOf(camera.quaternion); } catch (e) {}
+
+        isNavigating = true;
+
+        // clear any pendingWalkTarget to avoid update() re-triggering mid-teleport
+        pendingWalkTarget = null;
+
+        const duration = (opts.duration != null) ? opts.duration : 0.6;
+        const ease = (opts.ease != null) ? opts.ease : 'power2.inOut';
+
+        try {
+            currentCameraTween = gsap.to(camera.position, {
+                x: posArr[0],
+                y: posArr[1],
+                z: posArr[2],
+                duration,
+                ease,
+                onComplete() {
+                    try {
+                        // ignore stale completions
+                        if (myToken !== navigationToken) {
+                            isNavigating = false;
+                            currentCameraTween = null;
+                            return;
+                        }
+
+                        // call teleportToPosition with the current token so it can
+                        // guard against stale calls too. If the caller didn't supply
+                        // an index (e.g. navigating to an additional/WASD target),
+                        // resolve the nearest navigation index so Boisvert is
+                        // teleported to the matching spawn position just like the
+                        // button-driven navigation does.
+                        try {
+                            let idxToUse = index;
+
+                            // If no explicit index provided, find nearest among base and additional positions
+                            try {
+                                if ((idxToUse === null || typeof idxToUse === 'undefined') && Array.isArray(navigationPositions) && navigationPositions.length > 0) {
+                                    let bestIdx = -1;
+                                    let bestDist = Infinity;
+
+                                    // Check base navigation positions
+                                    for (let j = 0; j < navigationPositions.length; j++) {
+                                        const p = navigationPositions[j];
+                                        if (!p || p.length < 3) continue;
+                                        const d = Math.sqrt(
+                                            Math.pow(posArr[0] - p[0], 2) +
+                                            Math.pow(posArr[1] - p[1], 2) +
+                                            Math.pow(posArr[2] - p[2], 2)
+                                        );
+                                        if (d < bestDist) {
+                                            bestDist = d;
+                                            bestIdx = j;
+                                        }
+                                    }
+
+                                    // Also check additional positions (map to extended indices)
+                                    const additional = (typeof window !== 'undefined' && Array.isArray(window.ADDITIONAL_NAVIGATION_POSITIONS))
+                                        ? window.ADDITIONAL_NAVIGATION_POSITIONS
+                                        : null;
+
+                                    if (additional && additional.length > 0) {
+                                        for (let j = 0; j < additional.length; j++) {
+                                            const p = additional[j];
+                                            if (!p || p.length < 3) continue;
+                                            const d = Math.sqrt(
+                                                Math.pow(posArr[0] - p[0], 2) +
+                                                Math.pow(posArr[1] - p[1], 2) +
+                                                Math.pow(posArr[2] - p[2], 2)
+                                            );
+                                            if (d < bestDist) {
+                                                bestDist = d;
+                                                bestIdx = navigationPositions.length + j;
+                                            }
+                                        }
+                                    }
+
+                                    if (bestIdx !== -1) idxToUse = bestIdx;
+                                }
+                            } catch (e) {}
+
+                            try {
+                                teleportToPosition(posArr, idxToUse, myToken);
+                            } catch (e) {
+                                console.warn('[boisvert] teleportToPosition failed:', e);
+                            }
+                        } catch (e) {
+                            console.warn('[boisvert] index resolution failed:', e);
+                        }
+
+                        if (typeof opts.onArrived === 'function') {
+                            try { opts.onArrived(); } catch (e) {}
+                        }
+                    } finally {
+                        isNavigating = false;
+                        currentCameraTween = null;
+                    }
+                },
+                onKill() {
+                    // tween was killed; if this was the active token, clear nav state
+                    if (myToken === navigationToken) {
+                        isNavigating = false;
+                        currentCameraTween = null;
+                    }
+                }
+            });
+        } catch (e) {
+            // Ensure state is cleaned up on failure
+            try { isNavigating = false; } catch (ee) {}
+            try { currentCameraTween = null; } catch (ee) {}
+        }
+    }
+
+    function teleportToPosition(targetPosition, index, token) {
+        // If this call includes a navigation token, ignore stale teleport calls
+        try {
+            if (typeof token !== 'undefined' && token !== null && token !== navigationToken) {
+                // stale call
+                return;
+            }
+        } catch (e) {}
         const spawnPos = boisvertSpawnPositions[index];
         
         if (!spawnPos) {
@@ -1755,9 +2061,11 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             const additional = (typeof window !== 'undefined' && Array.isArray(window.ADDITIONAL_NAVIGATION_POSITIONS)) ? window.ADDITIONAL_NAVIGATION_POSITIONS : null;
             
             if (additional && additional.length > 0) {
+                // determine whether camera is currently at an additional nav point
+                // and whether the teleport target (nav target) is an additional point.
                 for (let ap of additional) {
                     if (!ap || ap.length < 3) continue;
-                    
+
                     const ddCam = Math.sqrt(
                         Math.pow(camera.position.x - ap[0], 2) +
                         Math.pow(camera.position.y - ap[1], 2) +
@@ -1767,20 +2075,68 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                         inAdditional = true;
                     }
 
-                    const ddTarget = Math.sqrt(
-                        Math.pow(spawnPos[0] - ap[0], 2) +
-                        Math.pow(spawnPos[1] - ap[1], 2) +
-                        Math.pow(spawnPos[2] - ap[2], 2)
-                    );
+                    // The important change: compare the navigation target (the first
+                    // argument passed to teleportToPosition) to additional positions,
+                    // not Boisvert's spawnPos. Previously we compared spawnPos which
+                    // could be a different coordinate set and caused the lookAt popup
+                    // to fire incorrectly when navigating to an additional position.
+                    let ddTarget = Infinity;
+                    try {
+                        if (Array.isArray(targetPosition) && targetPosition.length >= 3) {
+                            ddTarget = Math.sqrt(
+                                Math.pow(targetPosition[0] - ap[0], 2) +
+                                Math.pow(targetPosition[1] - ap[1], 2) +
+                                Math.pow(targetPosition[2] - ap[2], 2)
+                            );
+                        } else if (targetPosition && typeof targetPosition.x === 'number') {
+                            ddTarget = Math.sqrt(
+                                Math.pow(targetPosition.x - ap[0], 2) +
+                                Math.pow(targetPosition.y - ap[1], 2) +
+                                Math.pow(targetPosition.z - ap[2], 2)
+                            );
+                        } else {
+                            // fallback to spawnPos if nav target shape is unexpected
+                            if (spawnPos && spawnPos.length >= 3) {
+                                ddTarget = Math.sqrt(
+                                    Math.pow(spawnPos[0] - ap[0], 2) +
+                                    Math.pow(spawnPos[1] - ap[1], 2) +
+                                    Math.pow(spawnPos[2] - ap[2], 2)
+                                );
+                            }
+                        }
+                    } catch (e) {
+                        ddTarget = Infinity;
+                    }
+
                     if (ddTarget <= Math.max(POSITION_THRESHOLD, 0.9)) {
                         targetIsAdditional = true;
                     }
-                    
+
                     if (inAdditional && targetIsAdditional) break;
                 }
             }
-            
-            if (!inAdditional && !targetIsAdditional && (Math.random() < 1/3 || index === 5) && index !== 0) {
+
+            // Debugging hook (guarded): print decision variables so we can
+            // inspect why lookAtBoisvert may or may not fire.
+            try {
+                if (typeof window !== 'undefined' && window.__NAV_DEBUG) {
+                    console.debug('[boisvert] teleportToPosition', {
+                        index,
+                        inAdditional,
+                        targetIsAdditional,
+                        goingToPortfolio: _goingToPortfolio,
+                        additionalCount: (additional && additional.length) || 0,
+                        targetPositionShape: Array.isArray(targetPosition) ? 'array' : (targetPosition && typeof targetPosition.x === 'number' ? 'vec3' : typeof targetPosition)
+                    });
+                }
+            } catch (e) {}
+
+            // Only trigger lookAtBoisvert when neither camera nor the nav target are
+            // additional positions and the user did not explicitly request
+            // navigation to the portfolio (via Boisvert click).
+            // This avoids forcing a lookAt when the user deliberately navigates
+            // to the portfolio/additional spot.
+            if (!inAdditional && !targetIsAdditional && !_goingToPortfolio && (Math.random() < 1/3 || index === 5) && index !== 0 && (additional && additional.length > 0)) {
                 lookAtBoisvert();
             }
         } catch (e) {
@@ -1846,7 +2202,9 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                         const dz = camera.position.z - wasdTarget[2];
                         const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
                         // If the user is not already at the WASD point (use a sensible threshold)
-                        if (dist > Math.max(POSITION_THRESHOLD, 0.9)) {
+                        // Only show this popup when walk/WASD controls are NOT active.
+                        // Check both local `walkModeActive` and global `window.__walkModeActive`.
+                        if (dist > Math.max(POSITION_THRESHOLD, 0.9) && !walkModeActive && !(typeof window !== 'undefined' && window.__walkModeActive)) {
                             // Build a popup matching the welcome popup style asking to go to portfolio
                             try {
                                 // If an element already exists, don't recreate
@@ -1859,7 +2217,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                                     wrap.style.left = '0';
                                     wrap.style.top = '0';
                                     wrap.style.width = '100%';
-                                    wrap.style.height = '100%';
+                                    wrap.style.height = '90%';
                                     wrap.style.zIndex = '9999';
                                     // move popup lower on the screen and align towards top
                                     // Position the popup near the bottom of the viewport (above nav buttons)
@@ -1872,7 +2230,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                                     // slightly smaller than the main welcome popup
                                     card.style.maxWidth = '520px';
                                     card.style.textAlign = 'center';
-                                    card.style.margin = '0 12px';
+                                    card.style.margin = '0 24px';
 
                                     const header = document.createElement('div');
                                     header.className = 'popup-header';
@@ -1906,12 +2264,15 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                                     btnNo.id = 'portfolioNoBtn';
                                     btnNo.className = 'popup-return-btn';
                                     btnNo.innerText = 'LATER';
+                                    btnNo.style.color = 'red'
+                                    btnNo.style.marginRight = '8px';
 
                                     const btnYes = document.createElement('button');
                                     btnYes.id = 'portfolioYesBtn';
                                     btnYes.className = 'popup-return-btn';
                                     btnYes.innerText = 'YES - TAKE ME THERE';
-                                    btnYes.style.marginRight = '8px';
+                                    btnYes.style.color = 'green';
+                                    btnYes.style.marginRight = '10px';
 
                                     
 
@@ -1931,9 +2292,14 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                                         try {
                                             // Reuse existing click behavior to navigate to the WASD additional position
                                             try { onBoisvertClick(); } catch (e) {
-                                                // Fallback: directly move camera to the target
+                                                // Fallback: use the safe navigation helper to move camera to the target
                                                 try {
-                                                    gsap.to(camera.position, { x: wasdTarget[0], y: wasdTarget[1], z: wasdTarget[2], duration: 0.5, ease: 'power2.inOut', onComplete: () => { try { enableWalkMode(new THREE.Vector3(wasdTarget[0], wasdTarget[1], wasdTarget[2])); } catch(e){} } });
+                                                    startNavigationTo(wasdTarget, null, {
+                                                        duration: 0.5,
+                                                        onArrived: () => {
+                                                            try { enableWalkMode(new THREE.Vector3(wasdTarget[0], wasdTarget[1], wasdTarget[2])); } catch(e){}
+                                                        }
+                                                    });
                                                 } catch (ee) {}
                                             }
                                         } catch (e) {}
@@ -1980,43 +2346,57 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             if (!target || target.length < 3) return;
 
             if (window.navigateToPosition) {
+                // mark that the user intentionally requested navigation to the
+                // portfolio so we don't immediately trigger lookAtBoisvert()
+                // during the teleport logic.
+                _goingToPortfolio = true;
                 pendingWalkTarget = new THREE.Vector3(target[0], target[1], target[2]);
                 try {
-                    gsap.to(camera.position, {
-                        x: target[0],
-                        y: target[1],
-                        z: target[2],
+                    // preserve pendingWalkTarget behavior for update() while starting navigation
+                    pendingWalkTarget = new THREE.Vector3(target[0], target[1], target[2]);
+                    startNavigationTo(target, null, {
                         duration: 0.4,
-                        ease: 'power2.inOut',
-                        onComplete: () => {
-                            if (window && window.flashlight) window.flashlight.intensity = 30;
+                        onArrived: () => {
+                            if (window && window.flashlight) try { window.flashlight.intensity = 30; } catch (e) {}
                             try {
                                 enableWalkMode(new THREE.Vector3(target[0], target[1], target[2]));
                             } catch (e) {}
 
                             try {
+                                // orientation tween after arrival; store so we can kill it if needed
+                                try { if (currentOrientationTween && currentOrientationTween.kill) currentOrientationTween.kill(); } catch (e) {}
                                 const lookTarget = new THREE.Vector3(camera.position.x, camera.position.y, camera.position.z - 1);
                                 const lookAtMatrix = new THREE.Matrix4();
                                 lookAtMatrix.lookAt(camera.position, lookTarget, camera.up);
                                 const targetQuat = new THREE.Quaternion();
                                 targetQuat.setFromRotationMatrix(lookAtMatrix);
-
                                 const startQuat = camera.quaternion.clone();
-                                gsap.to({ t: 0 }, {
+
+                                currentOrientationTween = gsap.to({ t: 0 }, {
                                     t: 1,
                                     duration: 0.6,
                                     ease: 'power2.inOut',
                                     onUpdate() {
-                                        camera.quaternion.slerpQuaternions(startQuat, targetQuat, this.targets()[0].t);
-                                        if (controls && controls.target && typeof controls.target.copy === 'function') {
-                                            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).multiplyScalar(2);
-                                            const ctrlTarget = camera.position.clone().add(forward);
-                                            controls.target.copy(ctrlTarget);
-                                        }
+                                        try {
+                                            camera.quaternion.slerpQuaternions(startQuat, targetQuat, this.targets()[0].t);
+                                            if (controls && controls.target && typeof controls.target.copy === 'function') {
+                                                const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).multiplyScalar(2);
+                                                const ctrlTarget = camera.position.clone().add(forward);
+                                                controls.target.copy(ctrlTarget);
+                                            }
+                                        } catch (e) {}
+                                    },
+                                    onComplete() {
+                                        try { _goingToPortfolio = false; } catch (e) {}
+                                        currentOrientationTween = null;
+                                    },
+                                    onKill() {
+                                        try { _goingToPortfolio = false; } catch (e) {}
+                                        currentOrientationTween = null;
                                     }
                                 });
                             } catch (e) {
-                                // Ignore orientation failures
+                                try { _goingToPortfolio = false; } catch (ee) {}
                             }
                         }
                     });
@@ -2024,7 +2404,15 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                     // Fallback handled elsewhere
                 }
             } else {
+                // if navigateToPosition isn't present, we call it directly; still
+                // mark the intent so lookAtBoisvert is suppressed during the
+                // immediate navigation.
+                _goingToPortfolio = true;
                 window.navigateToPosition(target, 30);
+                // If navigateToPosition is synchronous or triggers immediate
+                // navigation, clear the intent now so the user can look at
+                // Boisvert again after arrival.
+                try { _goingToPortfolio = false; } catch (e) {}
             }
             
             try {
@@ -2037,7 +2425,8 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     
     function checkCameraPosition() {
         const camPos = camera.position;
-        
+
+        // 1) Exact match with base navigation positions
         for (let i = 0; i < navigationPositions.length; i++) {
             const navPos = navigationPositions[i];
             const distance = Math.sqrt(
@@ -2045,21 +2434,55 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                 Math.pow(camPos.y - navPos[1], 2) +
                 Math.pow(camPos.z - navPos[2], 2)
             );
-            
+
             if (distance < POSITION_THRESHOLD && i !== currentTargetIndex) {
                 currentTargetIndex = i;
+                try { disableWalkMode(); } catch (e) {}
                 teleportToPosition(navPos, i);
-                try {
-                    disableWalkMode();
-                } catch (e) {}
                 return;
             }
         }
-        
+
+        // 2) Exact match with additional navigation positions (map to extended indices)
+        try {
+            const additional = (typeof window !== 'undefined' && Array.isArray(window.ADDITIONAL_NAVIGATION_POSITIONS))
+                ? window.ADDITIONAL_NAVIGATION_POSITIONS
+                : null;
+
+            if (additional && additional.length > 0) {
+                for (let j = 0; j < additional.length; j++) {
+                    const addPos = additional[j];
+                    if (!addPos || addPos.length < 3) continue;
+
+                    const distance = Math.sqrt(
+                        Math.pow(camPos.x - addPos[0], 2) +
+                        Math.pow(camPos.y - addPos[1], 2) +
+                        Math.pow(camPos.z - addPos[2], 2)
+                    );
+
+                    const extendedIndex = navigationPositions.length + j;
+
+                    if (distance < POSITION_THRESHOLD && extendedIndex !== currentTargetIndex) {
+                        currentTargetIndex = extendedIndex;
+                        try { disableWalkMode(); } catch (e) {}
+                        if (boisvertSpawnPositions && extendedIndex < boisvertSpawnPositions.length) {
+                            teleportToPosition(addPos, extendedIndex);
+                        }
+                        return;
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[boisvert] Error checking additional positions:', e);
+        }
+
+        // 3) Nearest-position relaxed threshold check (check base + additional)
         try {
             let nearestIndex = -1;
             let nearestDist = Infinity;
-            
+            let isAdditionalPos = false;
+
+            // Check base navigation positions
             for (let j = 0; j < navigationPositions.length; j++) {
                 const p = navigationPositions[j];
                 const d = Math.sqrt(
@@ -2070,19 +2493,47 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                 if (d < nearestDist) {
                     nearestDist = d;
                     nearestIndex = j;
+                    isAdditionalPos = false;
                 }
             }
-            
-            const RELAXED_THRESHOLD = Math.max(POSITION_THRESHOLD * 2.0, 1.2);
-            if (nearestIndex !== -1 && nearestIndex !== currentTargetIndex && nearestDist <= RELAXED_THRESHOLD) {
-                currentTargetIndex = nearestIndex;
-                teleportToPosition(navigationPositions[nearestIndex], nearestIndex);
-                try {
-                    disableWalkMode();
-                } catch (e) {}
+
+            // Also check additional positions
+            const additionalCheck = (typeof window !== 'undefined' && Array.isArray(window.ADDITIONAL_NAVIGATION_POSITIONS))
+                ? window.ADDITIONAL_NAVIGATION_POSITIONS
+                : null;
+
+            if (additionalCheck && additionalCheck.length > 0) {
+                for (let j = 0; j < additionalCheck.length; j++) {
+                    const p = additionalCheck[j];
+                    if (!p || p.length < 3) continue;
+                    const d = Math.sqrt(
+                        Math.pow(camPos.x - p[0], 2) +
+                        Math.pow(camPos.y - p[1], 2) +
+                        Math.pow(camPos.z - p[2], 2)
+                    );
+                    if (d < nearestDist) {
+                        nearestDist = d;
+                        nearestIndex = navigationPositions.length + j;
+                        isAdditionalPos = true;
+                    }
+                }
+            }
+
+            if (!walkModeActive) {
+                const RELAXED_THRESHOLD = Math.max(POSITION_THRESHOLD * 2.0, 1.2);
+                if (nearestIndex !== -1 && nearestIndex !== currentTargetIndex && nearestDist <= RELAXED_THRESHOLD) {
+                    currentTargetIndex = nearestIndex;
+                    try { disableWalkMode(); } catch (e) {}
+
+                    const targetPos = isAdditionalPos
+                        ? (additionalCheck ? additionalCheck[nearestIndex - navigationPositions.length] : null)
+                        : navigationPositions[nearestIndex];
+
+                    if (targetPos) teleportToPosition(targetPos, nearestIndex);
+                }
             }
         } catch (e) {
-            // Swallow edge-case detection errors
+            console.warn('[boisvert] Error in relaxed threshold check:', e);
         }
     }
     
@@ -2389,6 +2840,18 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             } catch (e) {
                 // Ignore raycast/visibility errors
             }
+        }
+
+        // Periodic position check - ensure Boisvert teleports even if movement-based detection fails
+        try {
+            if (!update._lastPositionCheck) update._lastPositionCheck = 0;
+            const nowPerf = performance.now();
+            if (nowPerf - update._lastPositionCheck > 500) { // Check every 500ms
+                update._lastPositionCheck = nowPerf;
+                try { checkCameraPosition(); } catch (e) {}
+            }
+        } catch (e) {
+            // Swallow periodic check errors
         }
 
         try {

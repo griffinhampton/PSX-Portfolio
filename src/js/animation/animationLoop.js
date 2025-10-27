@@ -88,7 +88,7 @@ export function createAnimationLoop({
             interactiveManager.update();
         }
         
-        // Update camera interactive objects (indicators)
+        // Update camera interactive objects
         if (window.cameraInteractiveManager && typeof window.cameraInteractiveManager.update === 'function') {
             window.cameraInteractiveManager.update();
         }
@@ -126,28 +126,65 @@ export function createAnimationLoop({
                 // cooldown to avoid retrigger storms
                 const now = Date.now();
                 if (dist <= DOOR_TRIGGER_DISTANCE && (!animate._doorLastTriggered || now - animate._doorLastTriggered > 1500)) {
-                    // Teleport to last navigation position
+                    // Teleport to last navigation position (but do not teleport if a chase is active)
                     try {
+                        // mark triggered time immediately to avoid rapid retriggers
                         animate._doorLastTriggered = now;
+                        // Detect chase state using tolerant global flags - if chase is active, skip teleport
+                        let _door_chase_active = false;
+                        try {
+                            const bt = (typeof window !== 'undefined') ? window.boisvertTeleporterManager : null;
+                            const bg = (typeof window !== 'undefined') ? window.boisvertGame : null;
+                            if (bt) {
+                                try { if (bt.update && bt.update._chaseActive) _door_chase_active = true; } catch (e) {}
+                                try { if (bt.isChaseActive || bt.chaseActive || bt._isChaseActive || bt.isChasing) _door_chase_active = true; } catch (e) {}
+                            }
+                            if (bg) {
+                                try { if (bg.isChasing || bg.chaseActive || bg.inChase) _door_chase_active = true; } catch (e) {}
+                            }
+                        } catch (e) {}
+
+                        if (_door_chase_active) {
+                            try { if (window && window.console) console.warn('[collision] door teleport blocked: chase active'); } catch (e) {}
+                        } else {
+                        // Prefer to always send users exiting the portfolio through the backrooms door
+                        // to navigation index 5 (portfolio exit). If index 5 isn't available, fall back
+                        // to the previous behavior of using the last navigation position.
+                        const preferredIdx = 5;
                         const lastIdx = navigationPositions.length - 1;
-                        const target = navigationPositions[lastIdx];
-                        if (target && target.length >= 3) {
-                            // Use a short tween so it feels like a portal/transition
-                            gsap.killTweensOf(window.camera.position);
-                            gsap.to(window.camera.position, {
-                                x: target[0],
-                                y: target[1],
-                                z: target[2],
-                                duration: 0,
-                                ease: 'power2.inOut',
-                                onComplete: () => {
-                                    // Ensure orb manager updates visible orbs / state
-                                    try { if (orbManager && typeof orbManager.update === 'function') orbManager.update(); } catch (e) {}
-                                    // mark arrival so other logic (achievements) can react
-                                    try { window.dispatchEvent(new CustomEvent('orb:arrived', { detail: { index: lastIdx } })); } catch (e) {}
-                                }
-                            });
+                        let target = null;
+                        let arrivedIndex = lastIdx;
+                        if (navigationPositions[preferredIdx] && navigationPositions[preferredIdx].length >= 3) {
+                            target = navigationPositions[preferredIdx];
+                            arrivedIndex = preferredIdx;
+                        } else {
+                            target = navigationPositions[lastIdx];
+                            arrivedIndex = lastIdx;
                         }
+
+                        if (target && target.length >= 3) {
+                            // Use a short GSAP tween (0.5s) for door exits to match requested speed.
+                            // Disable walk mode first to ensure clean state, kill competing tweens,
+                            // animate camera, then update orbs and dispatch arrival.
+                            try {
+                                try { disableWalkMode(); } catch (e) {}
+                                try { gsap.killTweensOf(window.camera.position); } catch (e) {}
+                                gsap.to(window.camera.position, {
+                                    x: target[0],
+                                    y: target[1],
+                                    z: target[2],
+                                    duration: 0.5,
+                                    ease: 'power2.inOut',
+                                    onComplete: () => {
+                                        try { if (orbManager && typeof orbManager.update === 'function') orbManager.update(); } catch (e) {}
+                                        try { window.dispatchEvent(new CustomEvent('orb:arrived', { detail: { index: arrivedIndex } })); } catch (e) {}
+                                    }
+                                });
+                            } catch (e) {
+                                // swallow
+                            }
+                        }
+                    }
                     } catch (e) {
                         console.warn('[collision] failed to teleport on door collision', e);
                     }

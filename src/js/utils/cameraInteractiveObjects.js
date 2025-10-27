@@ -18,10 +18,12 @@ export function setupCameraInteractiveObjects(scene, domElement, camera, cameraI
     const pointer = new THREE.Vector2();
     const cameraInteractiveObjects = [];
     let previousCameraPosition = null;
-    const indicators = new Map(); // Map of object -> indicator element
+    // Indicators removed: no DOM exclamation markers are created or managed.
     
     // Distance threshold for position matching (camera can be slightly off)
     const POSITION_THRESHOLD = 0.5;
+
+    // Developer click-log removed to reduce noisy debug output
     
     /**
      * Check if camera is at an allowed position for showing indicators
@@ -61,23 +63,10 @@ export function setupCameraInteractiveObjects(scene, domElement, camera, cameraI
         object.userData.isCameraInteractive = true;
         object.userData.cameraConfig = config;
         object.userData.hasBeenClicked = false; // Track if object has been clicked
-        cameraInteractiveObjects.push(object);
-        
-        // Create indicator for this object
-        createIndicator(object);
+    cameraInteractiveObjects.push(object);
     }
     
-    /**
-     * Create exclamation mark indicator for an object
-     */
-    function createIndicator(object) {
-        const indicator = document.createElement('div');
-        indicator.className = 'interactive-indicator';
-        indicator.textContent = '!';
-        indicator.style.display = 'none'; // Hidden by default
-        document.body.appendChild(indicator);
-        indicators.set(object, indicator);
-    }
+    // createIndicator removed — no DOM indicators are created for camera interactives.
 
     /**
      * Handle object click - move camera to position
@@ -87,12 +76,7 @@ export function setupCameraInteractiveObjects(scene, domElement, camera, cameraI
         const targetPos = config.cameraPosition;
         const moveDuration = config.moveDuration || 1.5;
 
-        // Mark as clicked and hide indicator
-        object.userData.hasBeenClicked = true;
-        const indicator = indicators.get(object);
-        if (indicator) {
-            indicator.style.display = 'none';
-        }
+        // Mark as clicked. No DOM indicator to hide.
 
         // Store previous camera position
         previousCameraPosition = camera.position.clone();
@@ -164,6 +148,8 @@ export function setupCameraInteractiveObjects(scene, domElement, camera, cameraI
         
         const intersects = raycaster.intersectObjects(raycastTargets, false);
 
+        // raycast outcome computed
+
         if (intersects.length > 0) {
             let clicked = intersects[0].object;
             
@@ -196,81 +182,9 @@ export function setupCameraInteractiveObjects(scene, domElement, camera, cameraI
     domElement.addEventListener('pointerdown', onPointerDown);
     domElement.addEventListener('touchstart', onPointerDown, { passive: false });
     
-    /**
-     * Update indicator positions each frame
-     */
+    // Indicators removed; update() is a no-op for indicators.
     function update() {
-        cameraInteractiveObjects.forEach(obj => {
-            updateIndicator(obj);
-        });
-    }
-    
-    /**
-     * Update indicator position for an object
-     */
-    function updateIndicator(object) {
-        const indicator = indicators.get(object);
-        if (!indicator) return;
-        
-        // Only show indicator if:
-        // 1. Camera is at allowed position
-        // 2. Object hasn't been clicked yet
-        const isAtAllowedPos = isCameraAtAllowedPosition();
-        const shouldShow = isAtAllowedPos && !object.userData.hasBeenClicked;
-        
-        if (!shouldShow) {
-            indicator.style.display = 'none';
-            return;
-        }
-        // Project 3D world position to 2D screen space
-        const worldPos = new THREE.Vector3();
-        object.getWorldPosition(worldPos);
-
-        // Only show indicator for objects that are in front of the camera
-        const toObject = new THREE.Vector3();
-        toObject.subVectors(worldPos, camera.position).normalize();
-        const camDir = new THREE.Vector3();
-        camera.getWorldDirection(camDir);
-        if (toObject.dot(camDir) <= 0) {
-            // Object is behind the camera - hide indicator
-            indicator.style.display = 'none';
-            return;
-        }
-
-        // Project to NDC
-        const vector = worldPos.clone();
-        vector.project(camera);
-
-        // Optional occlusion test (enable via window.__ENABLE_INDICATOR_OCCLUSION)
-        if (window.__ENABLE_INDICATOR_OCCLUSION) {
-            const dir = new THREE.Vector3().subVectors(worldPos, camera.position).normalize();
-            raycaster.set(camera.position, dir);
-            const distanceToObj = camera.position.distanceTo(worldPos);
-            const hits = raycaster.intersectObjects(scene.children, true);
-            if (hits && hits.length > 0) {
-                const first = hits[0];
-                if (first.distance < distanceToObj - 0.05 && first.object !== object) {
-                    indicator.style.display = 'none';
-                    return;
-                }
-            }
-        }
-
-        // Debug logging
-        if (window.__DEBUG_INDICATORS) {
-            const screenX = (vector.x * 0.5 + 0.5) * window.innerWidth;
-            const screenY = (vector.y * -0.5 + 0.5) * window.innerHeight;
-            console.debug('[cameraIndicator] show', { name: object.name, uuid: object.uuid, worldPos: worldPos.toArray(), screen: { x: screenX, y: screenY } });
-        }
-        
-    // Convert to pixel coordinates
-    const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-    const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
-        
-        // Update indicator position
-        indicator.style.left = `${x}px`;
-        indicator.style.top = `${y}px`;
-        indicator.style.display = 'block';
+        // Intentionally empty — no DOM indicators to update.
     }
 
     return {
@@ -279,13 +193,7 @@ export function setupCameraInteractiveObjects(scene, domElement, camera, cameraI
             domElement.removeEventListener('pointerdown', onPointerDown);
             domElement.removeEventListener('touchstart', onPointerDown);
             
-            // Clean up indicators
-            indicators.forEach((indicator) => {
-                if (indicator.parentNode) {
-                    indicator.parentNode.removeChild(indicator);
-                }
-            });
-            indicators.clear();
+            // No indicator DOM cleanup required (indicators removed).
         },
         getPreviousCameraPosition() {
             return previousCameraPosition;

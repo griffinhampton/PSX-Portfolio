@@ -87,13 +87,11 @@ if (isMobileDevice()) {
                 const pad = new RotationPad(document.body);
                 try { window.rotationPad = pad; } catch (e) {}
 
-                // Reduce overall sensitivity to 20% of previous value then halve it
-                // to meet the user's request for "half the current speed".
+                // Base sensitivity constants; actual sensitivity can be overridden at runtime
                 const BASE_SENSITIVITY = 0.06;
-                // Previously we used BASE * 0.2 (20%); halve that to 10% of BASE
-                const HORIZONTAL_SENSITIVITY = BASE_SENSITIVITY * 0.1; // 10% of previous BASE (half of prior value)
                 // Make vertical (pitch) even slower relative to horizontal
                 const VERTICAL_MULTI = 0.5; // vertical is 50% of horizontal
+                // Listen for pad events and consult any runtime override on window.__rotationPadSensitivity
                 pad.padElement.addEventListener('YawPitch', (ev) => {
                     try {
                         const d = ev && ev.detail ? ev.detail : null;
@@ -103,6 +101,12 @@ if (isMobileDevice()) {
 
                         const camera = window.camera;
                         if (!camera) return;
+
+                        // Allow runtime override: window.__rotationPadSensitivity (normalized value)
+                        // If present and numeric, treat it as a multiplier for the base sensitivity.
+                        let runtimeSens = null;
+                        try { if (typeof window.__rotationPadSensitivity === 'number') runtimeSens = window.__rotationPadSensitivity; } catch (e) {}
+                        const HORIZONTAL_SENSITIVITY = (runtimeSens !== null) ? runtimeSens : (BASE_SENSITIVITY * 0.1);
 
                         const PI_2 = Math.PI / 2;
                         const euler = new THREE.Euler();

@@ -19,6 +19,16 @@ export function setupNavbar(camera, navigationPositions, orbManager, flashlight)
      * @param {number} flashlightIntensity - Intensity for flashlight at destination
      */
     function navigateToPosition(targetPosition, flashlightIntensity = 30) {
+        // Prevent navigation while chase is active (tolerant global checks)
+        try {
+            if (typeof window !== 'undefined') {
+                const bt = window.boisvertTeleporterManager;
+                const bg = window.boisvertGame;
+                try { if (bt && bt.update && bt.update._chaseActive) { console.warn('[nav] navigation blocked: chase active'); return; } } catch (e) {}
+                try { if (bt && (bt.isChaseActive || bt.chaseActive || bt._isChaseActive || bt.isChasing)) { console.warn('[nav] navigation blocked: chase active'); return; } } catch (e) {}
+                try { if (bg && (bg.isChasing || bg.chaseActive || bg.inChase)) { console.warn('[nav] navigation blocked: chase active'); return; } } catch (e) {}
+            }
+        } catch (e) {}
         // Kill any ongoing camera animations
         gsap.killTweensOf(camera.position);
 
@@ -30,6 +40,12 @@ export function setupNavbar(camera, navigationPositions, orbManager, flashlight)
             duration: 2,
             ease: 'power2.inOut',
             onComplete: () => {
+                try {
+                    // Optional debug hook: set `window.__NAV_DEBUG = true` to enable
+                    if (typeof window !== 'undefined' && window.__NAV_DEBUG) {
+                        try { console.debug('[nav] navigateToPosition complete; target=', targetPosition, 'camera=', camera.position, 'controls.target=', controls && controls.target ? controls.target.clone() : null); } catch (e) {}
+                    }
+                } catch (e) {}
                 // Update flashlight intensity
                 if (flashlight) {
                     flashlight.intensity = flashlightIntensity;

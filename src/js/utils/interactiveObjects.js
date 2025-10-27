@@ -18,7 +18,12 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
     const interactiveObjects = [];
     let currentlyActiveObject = null; // Track the currently active/rotating object
     let cooldownEndTime = 0; // Timestamp when cooldown ends
-    const indicators = new Map(); // Map of object -> indicator element
+    // Track lantern state and camera position for auto-reset
+    let lastCameraPosition = null;
+    let activeLanterns = new Set(); // Track which lanterns are currently off
+    const CAMERA_MOVEMENT_THRESHOLD = 0.5; // How much camera must move to trigger reset
+    // NOTE: interactive indicators have been removed globally per UX request.
+    // This file no longer creates or manages DOM "exclamation" indicators.
     
     // Store scene reference globally for close button access
     window.interactiveObjectsScene = scene;
@@ -54,6 +59,98 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         }
         
         return false;
+    }
+
+    /**
+     * Check if camera has moved significantly from last position
+     */
+    function hasCameraMoved() {
+        if (!lastCameraPosition) {
+            lastCameraPosition = camera.position.clone();
+            return false;
+        }
+        
+        const currentPos = camera.position;
+        const distance = Math.sqrt(
+            Math.pow(currentPos.x - lastCameraPosition.x, 2) +
+            Math.pow(currentPos.y - lastCameraPosition.y, 2) +
+            Math.pow(currentPos.z - lastCameraPosition.z, 2)
+        );
+        
+        if (distance > CAMERA_MOVEMENT_THRESHOLD) {
+            lastCameraPosition = currentPos.clone();
+            return true;
+        }
+        
+        return false;
+    }
+
+    /**
+     * Turn a lantern back on (reset its lights)
+     */
+    function resetLantern(object) {
+        try {
+            const lights = findLanternLights(object);
+            
+            if (!lights || lights.length === 0) {
+                // Try to use global manager
+                if (typeof window !== 'undefined') {
+                    const gm = window.lightsManager || window.lights || window.sceneLights || window.lightController;
+                    if (gm && typeof gm.turnOn === 'function') {
+                        try {
+                            gm.turnOn(object.name || 'lantern');
+                            return;
+                        } catch (e) {}
+                    }
+                }
+                return;
+            }
+            
+            // Turn all associated lights back on
+            lights.forEach(light => {
+                try {
+                    if (typeof light.intensity === 'number') {
+                        // Restore saved intensity or use default
+                        light.intensity = (light.userData && light.userData._savedIntensity) 
+                            ? light.userData._savedIntensity 
+                            : 1;
+                    } else if ('visible' in light) {
+                        light.visible = true;
+                    }
+                } catch (e) {
+                    try { 
+                        if ('visible' in light) light.visible = true; 
+                    } catch (ee) {}
+                }
+            });
+            
+            // Update persistent state
+            try {
+                const key = (object && object.uuid) ? object.uuid : (object && object.name) ? object.name : 'lantern';
+                if (typeof window !== 'undefined') {
+                    try { 
+                        window.__lanternLightStates = window.__lanternLightStates || {};
+                        window.__lanternLightStates[key] = true; 
+                    } catch (e) {}
+                    
+                    // Update localStorage
+                    try {
+                        if (window.localStorage) {
+                            const prev = localStorage.getItem('lanternLightStates');
+                            const map = prev ? JSON.parse(prev) : {};
+                            map[key] = true;
+                            localStorage.setItem('lanternLightStates', JSON.stringify(map));
+                        }
+                    } catch (e) {}
+                }
+            } catch (e) {}
+            
+            // Remove from active lanterns set
+            activeLanterns.delete(object.uuid || object.name);
+            
+        } catch (e) {
+            console.warn('[interactiveObjects] resetLantern error', e);
+        }
     }
 
     /**
@@ -131,32 +228,68 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 }
             });
         }
+        // Make cola visually unlit like painting/screen/paper so it "glows" and isn't affected by scene lights
+        // Also boost brightness: multiply the base color and disable tone mapping so it appears brighter
+        if (config.objectName === 'cola') {
+            object.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    try {
+                        const oldMaterial = child.material;
+                        // Preserve texture where possible
+                        const map = oldMaterial.map || null;
+                        if (map) {
+                            try { map.encoding = THREE.sRGBEncoding; map.needsUpdate = true; } catch (e) {}
+                        }
+
+                        // Determine a base color (fall back to white if none)
+                        const baseColor = (oldMaterial.color && oldMaterial.color.clone) ? oldMaterial.color.clone() : new THREE.Color(1, 1, 1);
+                        // Brightness multiplier - tweak this value to make cola brighter/dimmer
+                        const BRIGHTNESS_MULTIPLIER = 1.6;
+                        baseColor.multiplyScalar(BRIGHTNESS_MULTIPLIER);
+
+                        const unlitMaterial = new THREE.MeshBasicMaterial({
+                            map: map,
+                            color: baseColor,
+                            transparent: !!oldMaterial.transparent,
+                            opacity: (typeof oldMaterial.opacity === 'number') ? oldMaterial.opacity : 1,
+                            side: oldMaterial.side || THREE.FrontSide,
+                            alphaTest: (typeof oldMaterial.alphaTest === 'number') ? oldMaterial.alphaTest : 0
+                        });
+
+                        // Prevent tone mapping from dimming the unlit material
+                        try { unlitMaterial.toneMapped = false; } catch (e) {}
+
+                        child.material = unlitMaterial;
+                        child.material.needsUpdate = true;
+
+                        if (oldMaterial.dispose) {
+                            try { oldMaterial.dispose(); } catch (e) {}
+                        }
+                    } catch (e) {
+                        // ignore material conversion failures
+                    }
+                }
+            });
+        }
+        // Mark lanterns so we can toggle lights when clicked
+        if (config.objectName === 'lantern' || (object.name && object.name.toLowerCase().includes('lantern'))) {
+            object.userData.isLantern = true;
+            // lanterns shouldn't jitter/rotate by default
+            object.userData.shouldRotate = false;
+            object.userData.shouldJitter = false;
+        }
         object.userData.shouldJitter = false; // Will be set to true after click
         object.userData.targetPosition = null; // Store target position for jitter
         object.userData.hasBeenClicked = false; // Track if object has been clicked
 
         interactiveObjects.push(object);
-        
-        // Create indicator for this object
-        createIndicator(object);
+
+        // No DOM indicators are created for interactive objects.
     }
+
+    // Developer debug helpers removed: click-log and verbose debug flags
     
-    /**
-     * Create exclamation mark indicator for an object
-     */
-    function createIndicator(object) {
-        const indicator = document.createElement('div');
-        indicator.className = 'interactive-indicator';
-        indicator.textContent = '!';
-        indicator.style.display = 'none'; // Hidden by default
-        // Ensure the indicator does not capture pointer events so clicks pass through
-        // to the underlying renderer canvas (prevents the indicator div from blocking pointerdown)
-        indicator.style.pointerEvents = 'none';
-        // Keep indicator visually above canvas
-        indicator.style.zIndex = '9999';
-        document.body.appendChild(indicator);
-        indicators.set(object, indicator);
-    }
+    // createIndicator removed — indicators intentionally omitted.
 
     /**
      * Map fetchitem object names to the items list index used by boisvertGame
@@ -209,7 +342,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
      */
     function respawnFetchItems() {
         try {
-            if (window && window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] respawning all fetch items...');
+            // respawning all fetch items
             interactiveObjects.forEach(obj => {
                 try {
                     const cfg = obj.userData && obj.userData.config;
@@ -245,14 +378,13 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                         }
                     } catch (e) {}
 
-                    // Show indicator again if present
-                    const ind = indicators.get(obj);
-                    if (ind) ind.style.display = 'block';
+                    // Fetch items should not display the exclamation indicator.
+                    // (Indicator creation for fetch items is intentionally skipped.)
                 } catch (e) {
                     console.warn('[interactiveObjects] Error respawning individual fetchitem', e);
                 }
             });
-            if (window && window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] respawn complete');
+            // respawn complete
         } catch (e) {
             console.error('[interactiveObjects] respawnFetchItems failed', e);
         }
@@ -270,19 +402,25 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
 
         // Set as the currently active object
         currentlyActiveObject = object;
+        // If this is a lantern, toggle its associated light(s) and don't run the normal movement flow
+        try {
+            if (object.userData && object.userData.isLantern) {
+                try { toggleLantern(object); } catch (e) { console.warn('[interactiveObjects] toggleLantern failed', e); }
+                // Ensure lanterns can be toggled repeatedly without waiting for cooldown/reset
+                try { currentlyActiveObject = null; cooldownEndTime = 0; } catch (e) {}
+                return;
+            }
+        } catch (e) {}
         
         // Mark as clicked and hide indicator
         object.userData.hasBeenClicked = true;
         // Log click for fetch items to help debug raycast/click issues
         try {
             if (config && config.isFetchItem) {
-                console.log('[interactiveObjects] fetchitem clicked ->', object.name || '<unnamed>');
+                // fetchitem clicked
             }
         } catch (e) {}
-        const indicator = indicators.get(object);
-        if (indicator) {
-            indicator.style.display = 'none';
-        }
+        // No DOM indicators to hide (removed globally).
         
         // Set cooldown time
         cooldownEndTime = Date.now() + clickCooldown;
@@ -332,6 +470,30 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 try { object.visible = false; } catch (e) {}
             }
         }
+
+        // If this object is part of Griffin's Domain (registered by name),
+        // show the griffin popup immediately. These objects are often
+        // registered without a targetPosition so the onComplete popup
+        // path (which runs after movement) never fires.
+        try {
+            const nameLowerQuick = ((config.objectName || object.name) || '').toLowerCase();
+            // If the name matches any of the known griffin / FNAD tokens, show the appropriate popup
+            if (nameLowerQuick.includes('griffins-domain') || nameLowerQuick.includes('fnad')) {
+                let popupId = 'griffinPopup';
+                if (nameLowerQuick.includes('fnad-world')) popupId = 'fnadWorldPopup';
+                else if (nameLowerQuick.includes('fnad-2') || nameLowerQuick.includes('fnad2')) popupId = 'fnad2Popup';
+
+                const popup = document.getElementById(popupId);
+                if (popup) {
+                    popup.style.display = 'block';
+                    try { popup.dataset.activeObjectUuid = object.uuid; } catch (e) {}
+                }
+                try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_griffins_domain'); } catch (e) {}
+            }
+        } catch (e) {}
+
+        // Log activation details for debugging (click-to-activate)
+        // debug logging removed
 
         // Store target position for jitter reference and animate to target if provided
         if (Array.isArray(targetPos) && targetPos.length >= 3) {
@@ -401,6 +563,22 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                             try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_painting'); } catch(e) {}
                         }
 
+                        // Show Griffin's Domain popup for objects with 'griffins-domain' in name
+                        try {
+                            const nameLower = ((config.objectName || object.name) || '').toLowerCase();
+                            if (nameLower.includes && (nameLower.includes('griffins-domain') || nameLower.includes('fnad'))) {
+                                let popupId = 'griffinPopup';
+                                if (nameLower.includes('fnad-world')) popupId = 'fnadWorldPopup';
+                                else if (nameLower.includes('fnad-2') || nameLower.includes('fnad2')) popupId = 'fnad2Popup';
+                                const popup = document.getElementById(popupId);
+                                if (popup) {
+                                    popup.style.display = 'block';
+                                    try { popup.dataset.activeObjectUuid = object.uuid; } catch(e) {}
+                                }
+                                try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_griffins_domain'); } catch(e) {}
+                            }
+                        } catch (e) {}
+
                         // Check composite: if all three clicked achievements + watched_screen unlocked, award master_interactor
                         try {
                             const ach = window.achievements;
@@ -449,6 +627,9 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         object.userData.shouldJitter = false;
         object.userData.targetPosition = null;
         object.userData.targetRotation = null;
+        // Allow this object to be clicked again
+        try { object.userData.hasBeenClicked = false; } catch (e) {}
+        // No indicators to restore (indicators removed).
         
         // Hide LinkedIn popup when cola resets
         if (config.objectName === 'cola') {
@@ -473,6 +654,21 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 popup.style.display = 'none';
             }
         }
+
+        // Hide Griffin's Domain / FNAD popup when relevant objects reset
+        try {
+            const nameLower = ((config.objectName || object.name) || '').toLowerCase();
+            if (nameLower.includes && (nameLower.includes('griffins-domain') || nameLower.includes('fnad'))) {
+                let popupId = 'griffinPopup';
+                if (nameLower.includes('fnad-world')) popupId = 'fnadWorldPopup';
+                else if (nameLower.includes('fnad-2') || nameLower.includes('fnad2')) popupId = 'fnad2Popup';
+                const popup = document.getElementById(popupId);
+                if (popup) {
+                    popup.style.display = 'none';
+                    try { delete popup.dataset.activeObjectUuid; } catch (e) {}
+                }
+            }
+        } catch (e) {}
 
         // Animate back to original position
         gsap.to(object.position, {
@@ -501,13 +697,12 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         // Check if camera is at an allowed position
         // Debug: log pointerdown entry and camera allowed state
         let cameraAllowed = true;
-        try {
-            const rectDbg = domElement.getBoundingClientRect();
-            const clientXD = event.clientX || (event.touches && event.touches[0] && event.touches[0].clientX) || (event.changedTouches && event.changedTouches[0] && event.changedTouches[0].clientX) || 0;
-            const clientYD = event.clientY || (event.touches && event.touches[0] && event.touches[0].clientY) || (event.changedTouches && event.changedTouches[0] && event.changedTouches[0].clientY) || 0;
-            cameraAllowed = isCameraAtAllowedPosition();
-            console.log('[interactiveObjects] pointerdown at', { clientX: clientXD, clientY: clientYD, domRect: { left: rectDbg.left, top: rectDbg.top, width: rectDbg.width, height: rectDbg.height }, cameraAllowed });
-        } catch (e) {}
+            try {
+                const rectDbg = domElement.getBoundingClientRect();
+                const clientXD = event.clientX || (event.touches && event.touches[0] && event.touches[0].clientX) || (event.changedTouches && event.changedTouches[0] && event.changedTouches[0].clientX) || 0;
+                const clientYD = event.clientY || (event.touches && event.touches[0] && event.touches[0].clientY) || (event.changedTouches && event.changedTouches[0] && event.changedTouches[0].clientY) || 0;
+                cameraAllowed = isCameraAtAllowedPosition();
+            } catch (e) {}
         
         // Get pointer position
         const rect = domElement.getBoundingClientRect();
@@ -540,13 +735,14 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
             });
         });
         try {
-            console.log('[interactiveObjects] raycastTargets count=', raycastTargets.length, 'interactiveObjects=', interactiveObjects.length, 'interactive names=', interactiveObjects.map(o=>o.name));
+            // raycastTargets computed
         } catch (e) {}
         
         const intersects = raycaster.intersectObjects(raycastTargets, false);
 
-        // Determine whether the click hit a fetchitem in either the raycastTargets or the whole scene.
+    // Determine whether the click hit a fetchitem or a griffins-domain object in either the raycastTargets or the whole scene.
         let clickedIsFetchItem = false;
+        let clickedIsGriffin = false;
         let fullHitsCache = null;
         try {
             if (!intersects || intersects.length === 0) {
@@ -555,22 +751,47 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 if (fullHitsCache && fullHitsCache.length > 0) {
                     const fh = fullHitsCache[0];
                     let chain = [];
-                    try { let p = fh.object; while(p) { chain.push(p.name || p.type); if (p.name && p.name.toLowerCase().includes('fetchitem')) clickedIsFetchItem = true; p = p.parent; } } catch(e){}
-                    console.log('[interactiveObjects] fallback top scene hit:', { name: fh.object.name, uuid: fh.object.uuid, distance: fh.distance, parentChain: chain });
+                                try {
+                                    let p = fh.object;
+                                    while (p) {
+                                        chain.push(p.name || p.type);
+                                        try {
+                                            const nm = (p.name || '').toLowerCase();
+                                            if (nm && nm.includes('fetchitem')) clickedIsFetchItem = true;
+                                            // Treat any node whose name contains 'fnad' as a griffin-like object
+                                            if (nm && (nm.includes('griffins-domain') || nm.includes('fnad'))) clickedIsGriffin = true;
+                                        } catch (ee) {}
+                                        p = p.parent;
+                                    }
+                                } catch(e){}
+                    // fallback top scene hit computed
                 } else {
-                    console.log('[interactiveObjects] no intersects on raycastTargets and nothing hit in whole scene');
+                    // no intersects on raycastTargets and nothing hit in whole scene
                 }
             } else {
                 const top = intersects[0].object;
                 let chain = [];
-                try { let p = top; while(p) { chain.push(p.name || p.type); if (p.name && p.name.toLowerCase().includes('fetchitem')) clickedIsFetchItem = true; p = p.parent; } } catch(e){}
-                console.log('[interactiveObjects] top intersect on raycastTargets:', { name: top.name, uuid: top.uuid, parentChain: chain });
+                try {
+                    let p = top;
+                    while (p) {
+                        chain.push(p.name || p.type);
+                        try {
+                            const nm = (p.name || '').toLowerCase();
+                            if (nm && nm.includes('fetchitem')) clickedIsFetchItem = true;
+                            if (nm && (nm.includes('griffins-domain') || nm.includes('fnad'))) clickedIsGriffin = true;
+                        } catch (ee) {}
+                        p = p.parent;
+                    }
+                } catch(e){}
+                // top intersect on raycastTargets computed
             }
         } catch (e) {}
 
-        // If camera is not at an allowed position and the click did not hit a fetch item, ignore the click
-        if (!cameraAllowed && !clickedIsFetchItem) {
-            if (window && window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] click ignored: camera not at allowed position and not a fetchitem');
+        // (raycast intermediate debug entry removed)
+
+        // If camera is not at an allowed position and the click did not hit a fetch item or a griffins-domain object, ignore the click
+        if (!cameraAllowed && !clickedIsFetchItem && !clickedIsGriffin) {
+            // camera not at allowed position; ignore click
             return;
         }
         if (intersects.length > 0) {
@@ -637,7 +858,6 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                     const nameLower = ((cfg.objectName || clicked.name) || '').toLowerCase();
                     const isEaster = nameLower.includes && nameLower.includes('easter');
                     if (isFetch && !isEaster && !isChaseActive()) {
-                        if (window && window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] fetchitem click ignored: chase not active', clicked.name);
                         // Treat as a non-interactive click: reset any active object if cooldown elapsed
                         if (currentlyActiveObject) {
                             if (Date.now() >= cooldownEndTime) {
@@ -664,6 +884,27 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 
                 // Only activate if it's not already the active object
                 if (currentlyActiveObject !== clicked) {
+                    // Prevent activating objects that are occluded by walls (don't allow clicking through geometry)
+                    try {
+                        if (isOccludedByWalls(clicked)) {
+                            // Click hit is occluded by wall geometry; ignore the click
+                            return;
+                        }
+                    } catch (e) {}
+
+                    // Enforce proximity: only allow activation if the user (camera) is within 10 units
+                    try {
+                        const _pos = new THREE.Vector3();
+                        clicked.getWorldPosition(_pos);
+                        const _dist = camera.position.distanceTo(_pos);
+                        if (typeof _dist === 'number' && _dist > 10) {
+                            // Too far away to interact
+                            return;
+                        }
+                    } catch (e) {
+                        // if anything goes wrong determining distance, fall back to allowing the click
+                    }
+
                     onObjectClick(clicked);
                 }
             } else {
@@ -697,6 +938,32 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         const time = Date.now() * 0.001; // Convert to seconds
         const isAtAllowedPos = isCameraAtAllowedPosition();
         
+        // NEW: Check if camera has moved and reset any active lanterns
+        if (hasCameraMoved && typeof hasCameraMoved === 'function' && activeLanterns.size > 0) {
+            try {
+                if (hasCameraMoved()) {
+                    const lanternsToReset = Array.from(activeLanterns);
+                    lanternsToReset.forEach(lanternKey => {
+                        let lanternObject = null;
+                        interactiveObjects.forEach(obj => {
+                            try {
+                                if (obj.userData && obj.userData.isLantern) {
+                                    const key = obj.uuid || obj.name;
+                                    if (key === lanternKey) lanternObject = obj;
+                                }
+                            } catch (e) {}
+                        });
+                        if (lanternObject) {
+                            try { resetLantern(lanternObject); } catch (e) {}
+                        }
+                    });
+                    activeLanterns.clear();
+                }
+            } catch (e) {
+                // ignore camera-reset errors
+            }
+        }
+
         interactiveObjects.forEach(obj => {
             if (obj.userData.shouldRotate) {
                 const rotationSpeed = obj.userData.config.rotationSpeed || 0.01;
@@ -726,109 +993,63 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 }
             }
             
-            // Update indicator position and visibility
-            updateIndicator(obj, isAtAllowedPos);
+            // Indicators have been removed; nothing to update per-frame.
         });
     }
     
-    /**
-     * Update indicator position for an object
-     */
-    function updateIndicator(object, showIndicator) {
-        const indicator = indicators.get(object);
-        if (!indicator) return;
-        
-        // Only show indicator if:
-        // 1. Camera is at allowed position
-        // 2. Object hasn't been clicked yet
-        // 3. Object is not currently active
-        const shouldShow = (function() {
-            // Base conditions
-            if (!showIndicator) return false;
-            if (object.userData.hasBeenClicked) return false;
-            if (currentlyActiveObject === object) return false;
 
-            // If this is a fetch item, only show indicators during an active chase
+    /**
+     * Determine whether the given object is occluded from the camera by
+     * the 'backrooms-walls' (or other wall-like) geometry. Returns true
+     * if a wall is closer to the camera than the object along the ray.
+     */
+    function isOccludedByWalls(object) {
+        try {
+            if (!object) return false;
+            // Get world position of the object (use canonical if available)
+            const worldPos = new THREE.Vector3();
+            object.getWorldPosition(worldPos);
+
+            // Direction from camera to object
+            const dir = new THREE.Vector3().subVectors(worldPos, camera.position);
+            const distanceToObj = dir.length();
+            if (distanceToObj <= 0.0001) return false;
+            dir.normalize();
+
+            // Raycast into the scene to find the first hit
+            raycaster.set(camera.position, dir);
+            const hits = raycaster.intersectObjects(scene.children, true);
+            if (!hits || hits.length === 0) return false;
+
+            const first = hits[0];
+            // If the first hit is the object itself (or a descendant), it's not occluded
+            let p = first.object;
+            while (p) {
+                if (p === object) return false;
+                p = p.parent;
+            }
+
+            // If the first hit is very near the distance to the object, allow it
+            if (first.distance >= distanceToObj - 0.05) return false;
+
+            // Otherwise check whether the first hit is a wall/backrooms geometry
             try {
-                const cfg = object.userData.config || {};
-                const isFetch = !!cfg.isFetchItem;
-                const nameLower = ((cfg.objectName || object.name) || '').toLowerCase();
-                const isEaster = nameLower.includes && nameLower.includes('easter');
-                if (isFetch && !isEaster && !isChaseActive()) return false;
+                p = first.object;
+                while (p) {
+                    const nm = (p.name || '').toLowerCase();
+                    if (nm && (nm.includes('walls') || nm.includes('wall') || nm.includes('backrooms'))) {
+                        return true;
+                    }
+                    p = p.parent;
+                }
             } catch (e) {
                 // ignore
             }
 
-            return true;
-        })();
-        
-        if (!shouldShow) {
-            indicator.style.display = 'none';
-            return;
+            return false;
+        } catch (e) {
+            return false;
         }
-        
-        // Project 3D world position to 2D screen space
-        const worldPos = new THREE.Vector3();
-        object.getWorldPosition(worldPos);
-
-        // Only show indicator for objects that are in front of the camera
-        const toObject = new THREE.Vector3();
-        toObject.subVectors(worldPos, camera.position).normalize();
-        const camDir = new THREE.Vector3();
-        camera.getWorldDirection(camDir);
-        if (toObject.dot(camDir) <= 0) {
-            // Object is behind the camera - hide indicator
-            indicator.style.display = 'none';
-            return;
-        }
-
-        // Now project the world position to normalized device coordinates
-        const vector = worldPos.clone();
-        vector.project(camera);
-
-        // Optional: occlusion test (is object visible from camera?)
-        if (ENABLE_INDICATOR_OCCLUSION || window.__ENABLE_INDICATOR_OCCLUSION) {
-            const dir = new THREE.Vector3().subVectors(worldPos, camera.position).normalize();
-            raycaster.set(camera.position, dir);
-            const distanceToObj = camera.position.distanceTo(worldPos);
-            // Intersect with the whole scene to detect occluders
-            const hits = raycaster.intersectObjects(scene.children, true);
-            if (hits && hits.length > 0) {
-                const first = hits[0];
-                if (first.distance < distanceToObj - 0.05 && first.object !== object) {
-                    // Something is blocking the view of the object
-                    if (window.__DEBUG_INDICATORS) console.debug('[indicator] occluded:', object.name, 'hit=', first.object.name, 'hitDist=', first.distance, 'objDist=', distanceToObj);
-                    indicator.style.display = 'none';
-                    return;
-                }
-            }
-        }
-
-        // Debug logging to help track mirrored/duplicate indicators
-        if (window.__DEBUG_INDICATORS) {
-            try {
-                const dot = toObject.dot(camDir);
-                const screenX = (vector.x * 0.5 + 0.5) * window.innerWidth;
-                const screenY = (vector.y * -0.5 + 0.5) * window.innerHeight;
-                console.debug('[indicator] show', { name: object.name, uuid: object.uuid, worldPos: worldPos.toArray(), dot, screen: { x: screenX, y: screenY }, hasBeenClicked: !!object.userData.hasBeenClicked });
-                // Log parent chain for context
-                let p = object.parent;
-                const chain = [];
-                while (p) { chain.push(p.name || p.type); p = p.parent; }
-                console.debug('[indicator] parentChain', chain.join(' -> '));
-            } catch (err) {
-                console.warn('[indicator] debug error', err);
-            }
-        }
-        
-        // Convert to pixel coordinates
-        const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-        const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
-        
-        // Update indicator position
-        indicator.style.left = `${x}px`;
-        indicator.style.top = `${y}px`;
-        indicator.style.display = 'block';
     }
 
     // Find and setup all configured objects
@@ -843,12 +1064,6 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
 
     });
 
-    // Auto-detect any scene objects that include "fetchitem" in their name
-    // These are the collectible items for the Boisvert chase and are made interactive.
-    // Items may be added asynchronously (GLTFLoader), and some scenes add them before
-    // this setup runs. We provide (A) an initial scan, (B) a monkey-patch to catch
-    // future additions, and (C) an exposed force-register helper you can call after
-    // models finish loading.
     let __originalSceneAdd = null;
 
     function registerFetchItemsInTree(root) {
@@ -859,11 +1074,8 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                     if (child && child.name && child.name.toLowerCase().includes('fetchitem')) {
                         // Avoid double-registration
                         if (child.userData && child.userData.isInteractive) {
-                            if (window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] fetchitem already registered:', child.name);
                             return;
                         }
-
-                        if (window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] Registering fetchitem:', child.name, 'uuid=', child.uuid);
                         const cfg = {
                             objectName: child.name,
                             clickCooldown: 300,
@@ -873,7 +1085,43 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                             isFetchItem: true
                         };
                         setupInteractiveObject(child, cfg);
-                        if (window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] fetchitem registered successfully:', child.name);
+                    }
+                    // Also auto-register any objects containing 'griffins-domain' or 'fnad' in their name
+                    try {
+                        const lname = child && child.name && child.name.toLowerCase();
+                        if (lname && (lname.includes('griffins-domain') || lname.includes('fnad'))) {
+                            // Avoid double-registration
+                            if (child.userData && child.userData.isInteractive) {
+                                return;
+                            }
+                            const cfg2 = {
+                                objectName: child.name,
+                                clickCooldown: 300,
+                                moveDuration: 1.5,
+                                shouldRotate: false,
+                                shouldJitter: false,
+                                isFetchItem: false
+                            };
+                            setupInteractiveObject(child, cfg2);
+                        }
+                        // Auto-register lantern objects by name
+                        const lname2 = child && child.name && child.name.toLowerCase();
+                        if (lname2 && lname2.includes('lantern')) {
+                            if (child.userData && child.userData.isInteractive) {
+                                return;
+                            }
+                            const cfgL = {
+                                objectName: child.name,
+                                clickCooldown: 200,
+                                moveDuration: 0.2,
+                                shouldRotate: false,
+                                shouldJitter: false,
+                                isLantern: true
+                            };
+                            setupInteractiveObject(child, cfgL);
+                        }
+                    } catch (e) {
+                        // ignore individual child errors
                     }
                 } catch (e) {
                     console.error('[interactiveObjects] Error registering individual fetchitem:', e);
@@ -884,12 +1132,114 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         }
     }
 
+    /**
+     * MODIFIED toggleLantern function - tracks when lanterns are turned off
+     * (Placed inside setupInteractiveObjects so it can access activeLanterns)
+     */
+    function toggleLantern(object) {
+        try {
+            // ensure an in-memory cache exists for lantern states
+            try { if (typeof window !== 'undefined') window.__lanternLightStates = window.__lanternLightStates || {}; } catch (e) {}
+            const lights = findLanternLights(object);
+            if ((!lights || lights.length === 0) && typeof window !== 'undefined') {
+                // try to let a manager handle it
+                const gm = window.lightsManager || window.lights || window.sceneLights || window.lightController;
+                if (gm) {
+                    try {
+                        // try a few common method names
+                        if (typeof gm.toggleLight === 'function') {
+                            gm.toggleLight(object.name || 'lantern');
+                            return;
+                        }
+                        if (typeof gm.toggle === 'function') {
+                            gm.toggle(object.name || 'lantern');
+                            return;
+                        }
+                        if (typeof gm.toggleByName === 'function') {
+                            gm.toggleByName(object.name || 'lantern');
+                            return;
+                        }
+                    } catch (e) {}
+                }
+            }
+
+            if (!lights || lights.length === 0) {
+                // nothing found — bail
+                return;
+            }
+
+            let wasOn = false;
+            let nowOn = false;
+            
+            lights.forEach(light => {
+                try {
+                    // Check if currently on
+                    if (typeof light.intensity === 'number') {
+                        if (light.intensity > 0) wasOn = true;
+                    } else if ('visible' in light && light.visible) {
+                        wasOn = true;
+                    }
+                    
+                    // Toggle
+                    if (typeof light.intensity === 'number') {
+                        if (light.intensity > 0) {
+                            light.userData = light.userData || {};
+                            light.userData._savedIntensity = light.intensity;
+                            light.intensity = 0;
+                        } else {
+                            light.intensity = (light.userData && light.userData._savedIntensity) ? light.userData._savedIntensity : 1;
+                            nowOn = true;
+                        }
+                    } else if ('visible' in light) {
+                        light.visible = !light.visible;
+                        if (light.visible) nowOn = true;
+                    }
+                } catch (e) {
+                    try { if ('visible' in light) light.visible = !light.visible; } catch (ee) {}
+                }
+            });
+            
+            // Track lantern state for auto-reset
+            const key = (object && object.uuid) ? object.uuid : (object && object.name) ? object.name : 'lantern';
+            
+            // If we just turned it off, add to active lanterns set
+            if (wasOn && !nowOn) {
+                activeLanterns.add(key);
+            } else if (nowOn) {
+                activeLanterns.delete(key);
+            }
+            
+            // Persist the resulting on/off state
+            try {
+                let anyOn = nowOn;
+                lights.forEach(l => {
+                    try {
+                        if (typeof l.intensity === 'number') {
+                            if (l.intensity > 0) anyOn = true;
+                        } else if ('visible' in l) {
+                            if (l.visible) anyOn = true;
+                        }
+                    } catch (e) {}
+                });
+                try { if (typeof window !== 'undefined') window.__lanternLightStates[key] = !!anyOn; } catch (e) {}
+                try {
+                    if (typeof window !== 'undefined' && window.localStorage) {
+                        const prev = localStorage.getItem('lanternLightStates');
+                        const map = prev ? JSON.parse(prev) : {};
+                        map[key] = !!anyOn;
+                        localStorage.setItem('lanternLightStates', JSON.stringify(map));
+                    }
+                } catch (e) {}
+            } catch (e) {}
+        } catch (e) {
+            console.warn('[interactiveObjects] toggleLantern error', e);
+        }
+    }
+
     // Register existing items now (scan the whole scene)
     try {
-        console.log('[interactiveObjects] Starting initial fetchitem registration...');
         registerFetchItemsInTree(scene);
         const found = interactiveObjects.filter(o => o.userData && o.userData.config && o.userData.config.isFetchItem).length;
-        console.log('[interactiveObjects] Initial fetchitem registration complete. Found:', found, 'fetch items');
     } catch (e) {
         console.error('[interactiveObjects] Initial fetchitem registration failed:', e);
     }
@@ -901,7 +1251,6 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
             scene.add = function(...objs) {
                 const res = __originalSceneAdd(...objs);
                 try {
-                    if (window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] scene.add called with', objs.length, 'objects');
                     for (const o of objs) {
                         // register any fetchitems inside the added subtree
                         registerFetchItemsInTree(o);
@@ -911,7 +1260,6 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 }
                 return res;
             };
-            console.log('[interactiveObjects] scene.add monkey-patched successfully');
         }
     } catch (e) {
         console.error('[interactiveObjects] Failed to monkey-patch scene.add:', e);
@@ -932,25 +1280,31 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         update,
         forceRegisterFetchItems() {
             try {
-                console.log('[interactiveObjects] Force re-registering all fetchitems...');
                 registerFetchItemsInTree(scene);
-                console.log('[interactiveObjects] Force registration complete. Total interactive:', interactiveObjects.length);
+                // force re-registration complete
             } catch (e) {
                 console.error('[interactiveObjects] forceRegisterFetchItems failed:', e);
             }
         },
         respawnFetchItems,
+        // Clear the currently active object if it matches the provided object.
+        // This allows external callers (popup close handlers) to tell the manager
+        // to reset state for an object that was clicked and to allow it to be
+        // clicked again immediately.
+        clearActiveObject(obj) {
+            try {
+                if (currentlyActiveObject && obj && currentlyActiveObject === obj) {
+                    try { resetObject(currentlyActiveObject); } catch (e) {}
+                    currentlyActiveObject = null;
+                    cooldownEndTime = 0;
+                }
+            } catch (e) {}
+        },
         dispose() {
             domElement.removeEventListener('pointerdown', onPointerDown);
             domElement.removeEventListener('touchstart', onPointerDown);
 
-            // Clean up indicators
-            indicators.forEach((indicator) => {
-                if (indicator.parentNode) {
-                    indicator.parentNode.removeChild(indicator);
-                }
-            });
-            indicators.clear();
+            // No indicator DOM cleanup required (indicators removed).
             // restore scene.add if we patched it
             try {
                 if (__originalSceneAdd && scene && scene.add) {
@@ -969,10 +1323,6 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         }
     };
 
-    // Auto-respawn hooks: listen for some common custom events the main app can dispatch.
-    // The main app can dispatch e.g. window.dispatchEvent(new CustomEvent('boisvert:teleportToStart'))
-    // when the player is teleported back to start, or 'boisvert:playerLost' when they lose,
-    // or 'boisvert:dlcAreaEntered' when they enter the DLC area again.
     let _teleportListener = null;
     let _lostListener = null;
     let _dlcEnterListener = null;
@@ -984,7 +1334,6 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
             window.addEventListener('boisvert:teleportToStart', _teleportListener);
             window.addEventListener('boisvert:playerLost', _lostListener);
             window.addEventListener('boisvert:dlcAreaEntered', _dlcEnterListener);
-            if (window.__DEBUG_INTERACTIVE) console.log('[interactiveObjects] respawn event listeners added');
         }
     } catch (e) {
         console.warn('[interactiveObjects] failed to add respawn listeners', e);
@@ -998,6 +1347,102 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
     return manager;
 }
 
+    /**
+     * Find lights likely associated with a lantern object.
+     * Tries several strategies:
+     *  - explicit userData.lightUuid or lightName on the object
+     *  - global light managers on window (tolerant checks)
+     *  - search the scene for Light objects whose name contains 'lantern' or the object's name token
+     */
+    function findLanternLights(object) {
+        const results = [];
+        try {
+            if (!object) return results;
+
+            // 1) explicit UUID or name reference on the object
+            try {
+                if (object.userData && object.userData.lightUuid) {
+                    const uuid = object.userData.lightUuid;
+                    const found = scene.getObjectByProperty('uuid', uuid);
+                    if (found && found.isLight) results.push(found);
+                }
+                if (object.userData && object.userData.lightName) {
+                    const name = object.userData.lightName.toLowerCase();
+                    scene.traverse((c) => { try { if (c.isLight && c.name && c.name.toLowerCase().includes(name)) results.push(c); } catch(e){} });
+                }
+                // 1b) check the object's descendants for any Light nodes (common when lantern model contains a light)
+                try {
+                    object.traverse && object.traverse((c) => {
+                        try {
+                            if (c && c.isLight) results.push(c);
+                        } catch (e) {}
+                    });
+                } catch (e) {}
+            } catch (e) {}
+
+            // 2) try global managers (tolerant)
+            try {
+                const gm = (typeof window !== 'undefined') ? (window.lightsManager || window.lights || window.sceneLights || window.lightController) : null;
+                if (gm) {
+                    // if manager provides array or find function, try to extract lights
+                    if (Array.isArray(gm)) {
+                        gm.forEach(it => { try { if (it && it.isLight) results.push(it); } catch(e){} });
+                    } else {
+                        // hunt common methods
+                        if (typeof gm.getLightByName === 'function') {
+                            const candidate = gm.getLightByName(object.name || 'lantern');
+                            if (candidate) results.push(candidate);
+                        }
+                        if (typeof gm.find === 'function') {
+                            try { const found = gm.find(it => it && it.name && it.name.toLowerCase().includes('lantern')); if (found && found.isLight) results.push(found); } catch(e){}
+                        }
+                    }
+                }
+            } catch (e) {}
+
+            // 3) scene search: any lights with 'lantern' or containing the object's name
+            try {
+                const token = (object.name || '').toLowerCase();
+                scene.traverse((c) => {
+                    try {
+                        if (!c || !c.isLight) return;
+                        const nm = (c.name || '').toLowerCase();
+                        if (nm && (nm.includes('lantern') || (token && token.length > 0 && nm.includes(token)))) {
+                            results.push(c);
+                        }
+                    } catch (e) {}
+                });
+                // 3b) also consider lights that are spatially near the lantern (within ~3 units)
+                try {
+                    const worldPos = new THREE.Vector3();
+                    object.getWorldPosition(worldPos);
+                    const proximityThresh = 3.0;
+                    scene.traverse((c) => {
+                        try {
+                            if (!c || !c.isLight) return;
+                            // If not already matched by name, check distance
+                            const lp = new THREE.Vector3();
+                            c.getWorldPosition(lp);
+                            if (lp.distanceTo(worldPos) <= proximityThresh) results.push(c);
+                        } catch (e) {}
+                    });
+                } catch (e) {}
+            } catch (e) {}
+        } catch (e) {
+            // ignore
+        }
+        // dedupe by uuid
+        const seen = new Set();
+        return results.filter(l => { if (!l || !l.uuid) return false; if (seen.has(l.uuid)) return false; seen.add(l.uuid); return true; });
+    }
+
+    /**
+     * Toggle the lantern's lights on/off. Uses intensity when available, otherwise toggles visibility.
+     */
+        // Module-level toggleLantern removed: replaced by a version inside setupInteractiveObjects
+
+// Developer dump/clear helpers removed.
+
 /**
  * Setup close button handlers for popup cards
  */
@@ -1005,6 +1450,14 @@ function setupPopupCloseButtons() {
     const closeButtons = document.querySelectorAll('.popup-close');
     
     closeButtons.forEach(button => {
+        // Check if this button already has our handler attached
+        if (button.dataset.closeHandlerAttached) {
+            return; // Skip if already has handler
+        }
+        
+        // Mark as handled to prevent duplicate listeners
+        button.dataset.closeHandlerAttached = 'true';
+        
         button.addEventListener('click', (event) => {
             event.stopPropagation();
             
@@ -1017,12 +1470,56 @@ function setupPopupCloseButtons() {
                 popup.style.display = 'none';
             }
             
-            // Reset the associated object
+            // Reset the associated object. Prefer to use the popup's recorded UUID
+            // (set when the popup was shown) so we reliably clear the exact object
+            // instance that was activated (this fixes FNAD re-open issues when the
+            // scene contains different node instances / ancestors).
+            try {
+                if (popup && popup.dataset && popup.dataset.activeObjectUuid && window.interactiveObjectsList) {
+                    const uuid = popup.dataset.activeObjectUuid;
+                    const objectToResetByUuid = window.interactiveObjectsList.find(obj => obj && obj.uuid === uuid);
+                    if (objectToResetByUuid) {
+                        try {
+                            if (window && window.interactiveObjectsManager && typeof window.interactiveObjectsManager.clearActiveObject === 'function') {
+                                window.interactiveObjectsManager.clearActiveObject(objectToResetByUuid);
+                            } else {
+                                resetObjectToOriginal(objectToResetByUuid);
+                            }
+                        } catch (e) { try { resetObjectToOriginal(objectToResetByUuid); } catch (ee) {} }
+                    }
+                    try { delete popup.dataset.activeObjectUuid; } catch (e) {}
+                    return; // handled by UUID path
+                }
+            } catch (e) {
+                // ignore and fall back to name-based reset
+            }
+
+            // Fallback: match either exact name or substring so
+            // popups that use a generic data-object like 'griffins-domain' can
+            // reset objects named 'griffins-domain-xxx'.
             if (objectName && window.interactiveObjectsList) {
-                // Find the object in the interactive objects list
-                const objectToReset = window.interactiveObjectsList.find(obj => obj.name === objectName);
+                // Prefer exact match, fall back to first object whose name includes the objectName token
+                let objectToReset = window.interactiveObjectsList.find(obj => obj.name === objectName);
+                if (!objectToReset) {
+                    objectToReset = window.interactiveObjectsList.find(obj => obj.name && objectName && obj.name.toLowerCase().includes(objectName.toLowerCase()));
+                    // Special-case: the griffin popup is used for FNAD objects too; allow closing to reset FNAD objects
+                    if (!objectToReset && objectName === 'griffins-domain') {
+                        objectToReset = window.interactiveObjectsList.find(obj => obj.name && (obj.name.toLowerCase().includes('griffins-domain') || obj.name.toLowerCase().includes('fnad')));
+                    }
+                }
                 if (objectToReset) {
-                    resetObjectToOriginal(objectToReset);
+                    // Prefer asking the interactive manager to reset internal state
+                    // so it can clear currentlyActiveObject and reset internal state.
+                    try {
+                        if (window && window.interactiveObjectsManager && typeof window.interactiveObjectsManager.clearActiveObject === 'function') {
+                            window.interactiveObjectsManager.clearActiveObject(objectToReset);
+                        } else {
+                            // Fallback: reset via the generic helper
+                            resetObjectToOriginal(objectToReset);
+                        }
+                    } catch (e) {
+                        try { resetObjectToOriginal(objectToReset); } catch (ee) {}
+                    }
                 }
             }
         });

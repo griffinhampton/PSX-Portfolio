@@ -54,33 +54,37 @@ class MovementPad {
     window.addEventListener('resize', () => { this.alignAndConfigPad(canvas); });
 
         // Mouse
-        this.region.addEventListener('mousedown', (event) => {
+        this._onRegionMouseDown = (event) => {
             this.mouseDown = true;
             this.handle.style.opacity = 1.0;
             this.update(event.pageX, event.pageY);
-        });
+        };
+        this.region.addEventListener('mousedown', this._onRegionMouseDown);
 
-        document.addEventListener('mouseup', () => {
+        this._onDocumentMouseUp = () => {
             this.mouseDown = false;
             this.resetHandlePosition();
-        });
+        };
+        document.addEventListener('mouseup', this._onDocumentMouseUp);
 
-        document.addEventListener('mousemove', (event) => {
+        this._onDocumentMouseMove = (event) => {
             if (!this.mouseDown) return;
             this.update(event.pageX, event.pageY);
-        });
+        };
+        document.addEventListener('mousemove', this._onDocumentMouseMove);
 
         // Touch — track pointer id for this pad so a second thumb can control rotation
-        this.region.addEventListener('touchstart', (event) => {
+        this._onRegionTouchStart = (event) => {
             const t = event.changedTouches && event.changedTouches[0];
             if (!t) return;
             this.activePointerId = t.identifier;
             this.handle.style.opacity = 1.0;
             if (event.cancelable) event.preventDefault();
             this.update(t.pageX, t.pageY);
-        }, { passive: false });
+        };
+        this.region.addEventListener('touchstart', this._onRegionTouchStart, { passive: false });
 
-        const touchEnd = (event) => {
+        this._onTouchEnd = (event) => {
             if (this.activePointerId === null) return;
             for (let i = 0; i < event.changedTouches.length; i++) {
                 if (event.changedTouches[i].identifier === this.activePointerId) {
@@ -90,10 +94,10 @@ class MovementPad {
                 }
             }
         };
-        document.addEventListener('touchend', touchEnd);
-        document.addEventListener('touchcancel', touchEnd);
+        document.addEventListener('touchend', this._onTouchEnd);
+        document.addEventListener('touchcancel', this._onTouchEnd);
 
-        document.addEventListener('touchmove', (event) => {
+        this._onDocumentTouchMove = (event) => {
             if (this.activePointerId === null) return;
             // find matching touch
             let touch = null;
@@ -106,7 +110,8 @@ class MovementPad {
             if (!touch) return;
             if (event.cancelable) event.preventDefault();
             this.update(touch.pageX, touch.pageY);
-        }, { passive: false });
+        };
+        document.addEventListener('touchmove', this._onDocumentTouchMove, { passive: false });
 
         this.resetHandlePosition();
     }
@@ -201,7 +206,23 @@ class MovementPad {
     }
 
     dispose() {
-        if (this.padElement && this.padElement.parentNode) this.padElement.parentNode.removeChild(this.padElement);
+        try {
+            if (this.padElement && this.padElement.parentNode) this.padElement.parentNode.removeChild(this.padElement);
+        } catch (e) {}
+
+        // Remove any document/window listeners we attached
+        try { window.removeEventListener('resize', this._onResize); } catch (e) {}
+        try { this.region.removeEventListener('mousedown', this._onRegionMouseDown); } catch (e) {}
+        try { document.removeEventListener('mouseup', this._onDocumentMouseUp); } catch (e) {}
+        try { document.removeEventListener('mousemove', this._onDocumentMouseMove); } catch (e) {}
+        try { this.region.removeEventListener('touchstart', this._onRegionTouchStart); } catch (e) {}
+        try { document.removeEventListener('touchend', this._onTouchEnd); } catch (e) {}
+        try { document.removeEventListener('touchcancel', this._onTouchEnd); } catch (e) {}
+        try { document.removeEventListener('touchmove', this._onDocumentTouchMove); } catch (e) {}
+
+        // Clear any repeating timeout
+        try { if (this.eventRepeatTimeout) clearTimeout(this.eventRepeatTimeout); } catch (e) {}
+
         this.padElement = null;
     }
 }

@@ -21,7 +21,9 @@ class RotationPad {
         this.padElement.classList.add('rotation-pad')
     // Basic inline styles so pad is visible without external CSS
     this.padElement.style.position = 'fixed'
-    this.padElement.style.zIndex = '10001' // sit above movement pad
+    // Use z-index slightly below popup panels (which use 10000+). This places
+    // the rotation pad in front of the canvas but behind any popup UI.
+    this.padElement.style.zIndex = '9999'
     this.padElement.style.pointerEvents = 'auto'
     this.padElement.style.userSelect = 'none'
         this.region = document.createElement('div')
@@ -125,7 +127,7 @@ class RotationPad {
         const canvasRect = canvas ? canvas.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight, top: 0, left: 0 };
         // Position near bottom-right of canvas but lifted a bit so it doesn't overlap the movement pad
         this.padElement.style.position = 'fixed'
-        this.padElement.style.zIndex = '10001'
+    this.padElement.style.zIndex = '9999'
     // Lift pad up by additional offset so it doesn't overlap movement pad (increase if still overlapping)
     // Increased lift and left offset to move the pad higher and more to the left per user request
     const LIFT_OFFSET = 130; // pixels to raise pad from its default bottom placement (reduced slightly to move pad down)

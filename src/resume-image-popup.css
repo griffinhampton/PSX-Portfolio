@@ -4,7 +4,8 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 2100;
+  /* Ensure the image preview appears above other popups by default */
+  z-index: 13000;
   pointer-events: all;
   animation: floatIn 0.5s ease-out;
   transition: top 0.2s, left 0.2s, transform 0.2s;

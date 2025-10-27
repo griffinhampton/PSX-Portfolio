@@ -33,7 +33,7 @@
         </div>
         <div class="popup-body">
           <p id="welcomeLookHint" class="popup-text" style="color:red;text-align: center;">Click and drag to look around!!!</p>
-          <p class="popup-text" style="text-align: center;">Click the blue orbs to move, and click anything with a red exclaimation point over it.</p>
+          <p class="popup-text" style="text-align: center;">Click the blue orbs to move, and interact with highlighted objects.</p>
           <div style="height:10px"></div>
           <button id="welcomeButton" class="popup-return-btn">ENTER THE WOODS &gt;</button>
         </div>
@@ -147,6 +147,62 @@
       </div>
     </div>
 
+    <!-- Griffin's Domain Popup (identical to About Me popup) -->
+    <div id="griffinPopup" class="about-popup" style="display: none;">
+      <div class="popup-card popup-card-scrollable draggable">
+        <button class="popup-close" data-popup="griffinPopup" data-object="griffins-domain" aria-label="Close">×</button>
+        <div class="popup-header">
+          <svg class="about-icon" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span class="popup-title">GRIFFIN'S DOMAIN</span>
+        </div>
+        <div class="popup-body popup-body-scrollable">
+          <h3 class="about-section-title">WELCOME</h3>
+          <p class="popup-text">This is Griffin's domain. Click around to explore more about the project and the author.</p>
+          <div style="height:8px"></div>
+          <p class="popup-text">Everything here is identical to the About Me popup layout and behavior.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- FNAD World Popup (separate element for FNAD-World) -->
+    <div id="fnadWorldPopup" class="about-popup" style="display: none;">
+      <div class="popup-card popup-card-scrollable draggable">
+        <button class="popup-close" data-popup="fnadWorldPopup" data-object="fnad-world" aria-label="Close">×</button>
+        <div class="popup-header">
+          <svg class="about-icon" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span class="popup-title">FNAD — WORLD</span>
+        </div>
+        <div class="popup-body popup-body-scrollable">
+          <h3 class="about-section-title">FNAD — WORLD</h3>
+          <p class="popup-text">This is the FNAD World node. Click around to explore the FNAD area.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- FNAD 2 Popup (separate element for FNAD-2) -->
+    <div id="fnad2Popup" class="about-popup" style="display: none;">
+      <div class="popup-card popup-card-scrollable draggable">
+        <button class="popup-close" data-popup="fnad2Popup" data-object="fnad2" aria-label="Close">×</button>
+        <div class="popup-header">
+          <svg class="about-icon" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span class="popup-title">FNAD 2</span>
+        </div>
+        <div class="popup-body popup-body-scrollable">
+          <h3 class="about-section-title">FNAD 2</h3>
+          <p class="popup-text">This is FNAD 2 — a separate node with its own popup card.</p>
+        </div>
+      </div>
+    </div>
+
     <div id="positionInfo">Hover over objects to see position</div>
   <!-- Mute control removed per UX request -->
   <!-- Bottom-right controls (settings + achievements) -->
@@ -155,17 +211,36 @@
     <button class="control-button" id="achievementsToggle" aria-label="Achievements">
       <img src="src/textures/achievement-base.png" alt="Achievements" class="nav-icon" />
     </button>
+    <!-- Instructions & Settings (moved into overflow menu on small screens) -->
+    <button id="instructionsToggle" class="control-button" aria-label="Instructions" title="Instructions">
+      <img src="src/textures/instructions-icon.png" alt="Instructions" class="nav-icon" />
+    </button>
 
     <button id="settingsButton" class="control-button" aria-label="Settings">
       <img src="src/textures/settings-nav.png" alt="Settings" class="nav-icon" />
     </button>
+
+    <!-- More / overflow menu toggle (shown on small screens) -->
+    <button id="moreToggle" class="control-button more-toggle" aria-label="More" title="More" style="display:none;">
+      <img src="src/textures/menu-icon.png" alt="More" class="nav-icon" style="width:22px;height:22px;object-fit:contain;" />
+    </button>
+  </div>
+  
+  <!-- Overflow menu that appears when More is tapped (mobile) -->
+  <div id="moreMenu" class="more-menu" style="display:none;">
+    <button class="more-item" id="moreInstructions" aria-label="Instructions"> <img src="src/textures/instructions-icon.png" alt="Instructions" style="width:20px;height:20px;object-fit:contain;margin-right:8px;"/> Instructions</button>
+    <button class="more-item" id="moreSettings" aria-label="Settings"> <img src="src/textures/settings-nav.png" alt="Settings" style="width:20px;height:20px;object-fit:contain;margin-right:8px;"/> Settings</button>
   </div>
     <!-- Settings panel (hidden by default) -->
-    <div id="settingsPanel" class="settings-panel" style="display:none; position:fixed; right:16px; bottom:72px; z-index:10000; background:rgba(0,0,0,0.9); padding:14px; border-radius:10px; color:#fff; width:260px; box-shadow:0 6px 18px rgba(0,0,0,0.6);">
-      <button id="settingsCloseBtn" class="popup-close" aria-label="Close" style="position:absolute;right:8px;top:6px;background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;">×</button>
+  <div id="settingsPanel" class="settings-panel" style="display:none; position:fixed; right:16px; bottom:72px; z-index:10000; padding:22px 14px 14px 14px; width:260px; box-shadow:0 6px 18px rgba(0,0,0,0.6);">
+  <button id="settingsCloseBtn" class="popup-close" aria-label="Close" style="position:absolute;right:8px;top:2px;background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;">×</button>
       <div style="padding-top:6px;">
-        <label for="dragSpeedRange" style="font-size:13px;display:block;margin-bottom:6px;">Drag speed: <span id="dragSpeedValue">0.002</span></label>
+        <label for="dragSpeedRange" style="font-size:13px;display:block;margin-bottom:6px;">Look sensitivity: <span id="dragSpeedValue">0.002</span></label>
         <input id="dragSpeedRange" type="range" min="0.0005" max="0.01" step="0.0001" value="0.002" style="width:100%;" />
+        <div style="height:12px"></div>
+        <!-- Master volume slider: controls all audio. Value is percent (0-100) -->
+        <label for="masterVolumeRange" style="font-size:13px;display:block;margin-bottom:6px;">Master Volume: <span id="masterVolumeValue">100%</span></label>
+        <input id="masterVolumeRange" type="range" min="0" max="100" step="1" value="100" style="width:100%;" />
         <div style="height:12px"></div>
         <!-- Mute checkbox removed (no-op audio control) -->
       </div>
@@ -197,6 +272,21 @@
           <!-- Reset button removed per UX request -->
         </div>
       </div>
+      
+          <!-- Instructions Popup (title-only placeholder; user will fill body) -->
+          <div id="instructionsPopup" class="about-popup" style="display: none;">
+            <div class="popup-card popup-card-scrollable draggable">
+              <div class="popup-header" style="position:relative;">
+                <img src="src/textures/achievement-base.png" alt="Instructions" style="width:32px;height:32px;object-fit:contain;"/>
+                <span class="popup-title">INSTRUCTIONS</span>
+                <button id="instructionsCloseBtn" class="popup-close" data-popup="instructionsPopup" aria-label="Close" style="position:absolute;right:8px;top:6px;background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;">×</button>
+              </div>
+              <div class="popup-body popup-body-scrollable" id="instructionsBody">
+                <!-- Content intentionally left blank for user to fill -->
+              </div>
+            </div>
+          </div>
+
   <link rel="stylesheet" href="src/resume-popup.css" />
   <link rel="stylesheet" href="src/resume-image-popup.css" />
     <div id="outputContainer"></div>
