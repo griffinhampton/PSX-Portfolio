@@ -42,6 +42,47 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     let pendingWalkTarget = null;
     let movementPad = null;
     const isMobileDevice = (typeof navigator !== 'undefined') && (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
+    // Helper: show a transient WASD notice on desktop when walk mode is enabled
+    function showWASDNotice() {
+        try {
+            if (isMobileDevice) return;
+            // If a notice already exists, refresh the timeout by removing it first
+            const existing = document.getElementById('wasd-controls-notice');
+            if (existing && existing.parentNode) {
+                try { existing.parentNode.removeChild(existing); } catch (e) {}
+            }
+            const notice = document.createElement('div');
+            notice.id = 'wasd-controls-notice';
+            notice.style.position = 'fixed';
+            notice.style.left = '50%';
+            notice.style.top = '45%';
+            notice.style.transform = 'translate(-50%, -50%)';
+            notice.style.pointerEvents = 'none';
+            notice.style.zIndex = '100001';
+            notice.style.textAlign = 'center';
+            notice.style.color = '#ffffff';
+            notice.style.fontFamily = "'VT323', monospace";
+            notice.style.textShadow = '0 2px 8px rgba(0,0,0,0.9)';
+
+            const msg = document.createElement('div');
+            msg.innerText = 'WASD CONTROLS ENABLED';
+            msg.style.fontSize = '32px';
+            msg.style.fontWeight = '400';
+            msg.style.letterSpacing = '2px';
+            msg.style.opacity = '0.95';
+            msg.style.color = 'red';
+            msg.style.margin = '0';
+
+            notice.appendChild(msg);
+            document.body.appendChild(notice);
+
+            setTimeout(() => {
+                try { if (notice && notice.parentNode) notice.parentNode.removeChild(notice); } catch (e) {}
+            }, 3000);
+        } catch (e) {
+            // ignore errors showing the notice
+        }
+    }
     // Collision/walk helpers and overlay state (defaults)
     let walkCollisionWalls = null;
     const walkRaycaster = new THREE.Raycaster();
@@ -1923,6 +1964,8 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
         try {
             window.__walkModeActive = true;
         } catch (e) {}
+        // Show the WASD hint each time walk mode is enabled (desktop only)
+        try { showWASDNotice(); } catch (e) {}
 
         enableWalkMode._cleanup = () => {
             window.removeEventListener('keydown', onKeyDown);

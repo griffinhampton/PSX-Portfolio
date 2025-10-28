@@ -249,46 +249,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {}
     } catch (e) {}
 
-    // If the user just visited the first DLC and is on desktop, show a brief WASD hint
-    try {
-        const ev = (arguments && arguments[0]) ? arguments[0] : null;
-        const id = ev && ev.detail ? ev.detail.id : null;
-        try {
-            if (id === 'visited_first_dlc' && typeof isMobileDevice === 'function' && !isMobileDevice()) {
-                // Create a transient notice styled like the Boisvert chase message
-                try {
-                    const notice = document.createElement('div');
-                    notice.id = 'wasd-controls-notice';
-                    notice.style.position = 'fixed';
-                    notice.style.left = '50%';
-                    notice.style.top = '45%';                notice.style.transform = 'translate(-50%, -50%)';
-                    notice.style.pointerEvents = 'none';
-                    notice.style.zIndex = '100001';
-                    notice.style.textAlign = 'center';
-                    notice.style.color = '#ffffff';
-                    notice.style.fontFamily = "'VT323', monospace";
-                    notice.style.textShadow = '0 2px 8px rgba(0,0,0,0.9)';
-
-                    const msg = document.createElement('div');
-                    msg.innerText = 'WASD CONTROLS ENABLED';
-                    msg.style.fontSize = '32px';
-                    msg.style.fontWeight = '400';
-                    msg.style.letterSpacing = '2px';
-                    msg.style.opacity = '0.95';
-                    msg.style.color = 'red';
-                    msg.style.margin = '0';
-
-                    notice.appendChild(msg);
-                    document.body.appendChild(notice);
-
-                    // Remove after 3s
-                    setTimeout(() => {
-                        try { if (notice && notice.parentNode) notice.parentNode.removeChild(notice); } catch (e) {}
-                    }, 3000);
-                } catch (e) {}
-            }
-        } catch (e) {}
-    } catch (e) {}
+    // NOTE: WASD hint will be shown by the global achievement listener
+    // when the 'visited_first_dlc' achievement is unlocked. Previous
+    // inline/argument-based checks were removed to avoid accidental
+    // triggering from other code paths.
 });
 
 // Centralized UI initialization: move inline index.html scripts here
