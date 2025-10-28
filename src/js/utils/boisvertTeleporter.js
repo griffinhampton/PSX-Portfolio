@@ -2418,6 +2418,14 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
 
     function onBoisvertClick(event) {
         try {
+            // If walk/WASD controls are active, ignore Boisvert clicks to avoid
+            // conflicting navigation intents. Use both local and global flags.
+            try {
+                if (walkModeActive || (typeof window !== 'undefined' && window.__walkModeActive)) {
+                    // swallow the click when walking is enabled
+                    return;
+                }
+            } catch (e) {}
             const additional = (window.ADDITIONAL_NAVIGATION_POSITIONS && Array.isArray(window.ADDITIONAL_NAVIGATION_POSITIONS)) ? window.ADDITIONAL_NAVIGATION_POSITIONS : null;
             const additionalFromScene = scene && scene.userData && scene.userData.additionalNavigationPositions ? scene.userData.additionalNavigationPositions : null;
             const additionalPositions = additional || additionalFromScene;
