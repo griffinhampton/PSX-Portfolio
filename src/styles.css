@@ -13,6 +13,12 @@ html,body{
     overscroll-behavior: none;
 }
 
+/* Ensure the document doesn't scroll and canvas fills the viewport */
+html, body {
+  height: 100%;
+  overflow: hidden; /* Prevent scrolling so canvas never becomes larger than the screen */
+}
+
 /* Loading Screen */
 .loading-screen {
   position: fixed;
@@ -529,10 +535,16 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Ensure canvas sits above the watermark but below UI popups */
+/* Canvas should be fixed and cover the viewport exactly so it can't be scrolled
+   or be smaller/larger than the screen. Use vw/vh to accommodate OS-level UI. */
 body > canvas {
-  position: relative;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
   z-index: 1;
-  
 }
 
 /* Watermark placed top-right but under canvas so 3D content covers it */

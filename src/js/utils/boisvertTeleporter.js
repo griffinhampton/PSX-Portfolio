@@ -731,7 +731,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             img.style.maxWidth = '98%';
             img.style.maxHeight = '85vh';
             // render at roughly half-size of the viewport width
-            img.style.width = '45%';
+            img.style.width = '45vw';
             img.style.height = 'auto';
             img.style.opacity = '0';
             img.style.pointerEvents = 'none';
@@ -870,7 +870,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             img.alt = 'fetch-complete';
             img.style.maxWidth = '98%';
             img.style.maxHeight = '85vh';
-            img.style.width = '45%';
+            img.style.width = '45vw';
             img.style.height = 'auto';
             img.style.opacity = '0';
             img.style.pointerEvents = 'none';

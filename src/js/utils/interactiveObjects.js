@@ -893,11 +893,19 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 
                 // Only activate if it's not already the active object
                 if (currentlyActiveObject !== clicked) {
-                    // Prevent activating objects that are occluded by walls (don't allow clicking through geometry)
+                    // Determine config and whether this is a fetch item
+                    let clickedCfg = null;
+                    try { clickedCfg = clicked && clicked.userData && clicked.userData.config; } catch (e) { clickedCfg = null; }
+                    const clickedIsFetch = !!(clickedCfg && clickedCfg.isFetchItem);
+
+                    // Prevent activating non-fetch objects that are occluded by walls (don't allow clicking through geometry)
+                    // Some fetchitems may be placed behind small props; allow fetchitems to bypass occlusion so they remain collectible.
                     try {
-                        if (isOccludedByWalls(clicked)) {
-                            // Click hit is occluded by wall geometry; ignore the click
-                            return;
+                        if (!clickedIsFetch) {
+                            if (isOccludedByWalls(clicked)) {
+                                // Click hit is occluded by wall geometry; ignore the click
+                                return;
+                            }
                         }
                     } catch (e) {}
 
