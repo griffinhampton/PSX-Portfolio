@@ -428,8 +428,7 @@ function resetAchievements() {
     renderPanel();
 }
 
-// If every registered achievement (excluding the collector) is unlocked,
-// unlock the special 'collected_all' achievement.
+
 function checkCollectAllAchievement() {
     const collectorId = 'collected_all';
     // Only proceed if the collector is registered and not already unlocked
@@ -458,16 +457,15 @@ export function registerDefaultAchievements() {
         { id: 'clicked_paper', title: 'Find my Pages...', description: 'You examined the paper on the table (my resume).' },
         { id: 'clicked_painting', title: 'Art Critic', description: 'You inspected the painting.' },
         { id: 'clicked_cola', title: 'Is This a Fallout Reference?', description: 'You inspected the LinkedIn Cola bottle.' },
-        { id: 'clicked_griffins_domain', title: "..Sooo do you Wa", description: "You clicked one of the portfolio cards." },
-    { id: 'clicked_easter', title: 'Easter Hunter', description: 'You found the hidden easter egg.' },
+        { id: 'clicked_griffins_domain', title: "..Sooo Wanna Hire Me?", description: "You clicked one of the portfolio cards." },
         { id: 'watched_screen', title: 'Film Critic', description: 'You played the video on the TV.' },
-        { id: 'visited_first_dlc', title: 'Where am I..?', description: 'You traveled to the first area of the DLC.' },
+        { id: 'master_interactor', title: 'Sleuth', description: 'You investigated all interactive objects in the cabin.' },
         { id: 'clicked_boisvert', title: 'Hello, Room', description: 'You clicked on the entity.' },
-        { id: 'master_interactor', title: 'Sleuth', description: 'You investigated all interactive objects.' },
+        { id: 'visited_first_dlc', title: 'Where am I..?', description: 'You traveled to the first area of the DLC.' },
+        { id: 'clicked_easter', title: 'Easter Hunter', description: 'You found the hidden easter egg.' },
         { id: 'game_start', title: 'Let the Hunt Begin', description:'You initiated the game with Room.'},
         { id: 'game_lost', title: 'You Died...', description: 'You lost the game with Room.' },
         { id: 'game_won', title: 'Nightmare Slain', description:'You won the game with Room.'},
-        // Special collector achievement: unlocked when every other achievement is obtained
         { id: 'collected_all', title: 'Completionist', description: 'You collected every achievement.' },
     ];
     for (const a of defaults) achievementsMap.set(a.id, a);

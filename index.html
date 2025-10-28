@@ -162,8 +162,8 @@
           <h3 class="about-section-title">Interactive Certifications Showcase</h3>
           <p class="popup-text">I've integrated a dynamic certifications carousel that displays my professional credentials from LinkedIn Learning and Microsoft in an engaging, interactive format. This Bootstrap-powered component features custom styling with company branding (including Microsoft's iconic four-color logo), smooth transitions, and indicator dots that show progress through the collection. Each certification card includes skills tags, direct links to credentials, and hover effects that enhance the user experience.</p>
           <br />
-          <h3 class="about-section-title">AI Integration</h3>
-          <p class="popup-text">The site now features an AI-powered chatbot integration through Zapier Interfaces, providing visitors with an interactive way to learn more about my work and experience. This addition demonstrates my ability to integrate third-party services and embrace emerging technologies to enhance user engagement.</p>
+          <h3 class="about-section-title">AI/Restful API Integration</h3>
+          <p class="popup-text">The site now features an AI-powered chatbot integration through Zapier Interfaces, and implimenting a restful API chatbot I trained, providing visitors with an interactive way to learn more about my work and experience. This addition demonstrates my ability to integrate third-party services and embrace emerging technologies to enhance user engagement.</p>
           <br />
           <h3 class="about-section-title">Technical Implementations</h3>
           <p class="popup-text">The technical improvements span multiple areas: Bootstrap framework integration for the carousel functionality, custom CSS animations and transitions, responsive design patterns that work across all devices, and advanced JavaScript for interactive features. I've also implemented proper accessibility features, including ARIA labels and keyboard navigation support, ensuring the site is usable for all visitors.</p>
@@ -200,7 +200,7 @@
           <span class="popup-title">FNAD — WORLD</span>
         </div>
         <div class="popup-body popup-body-scrollable">
-          <h3 class="about-section-title">This project was born from an undying curiosity</h3>
+          <h3 class="about-section-title">Hook</h3>
           <p class="popup-text">This project was born from an undying curiosity to venture into CSV file maps, and served as a much needed refresher with excel. It would be no stretch to say that this game prepared me for eventually becoming the coding contractor I am today. What started as a silly game for me and my friends to play in high school turned into the spark that ignited my love for computer science.</p>
           <br />
           <h3 class="about-section-title">Intro</h3>
@@ -237,7 +237,7 @@
           <span class="popup-title">FNAD 2</span>
         </div>
         <div class="popup-body popup-body-scrollable">
-          <h3 class="about-section-title">What started as a silly game</h3>
+          <h3 class="about-section-title">Hook</h3>
           <p class="popup-text">What started as a silly game for me and my friends to play in high school turned into the spark that ignited my love for computer science.</p>
           <br />
           <h3 class="about-section-title">Intro</h3>
@@ -253,7 +253,46 @@
           <p class="popup-text">FNAD 2 wasn’t just a game — it was the foundation of everything I’ve built since. It taught me how to take an idea from concept to execution, how to adapt when problems arise, and most importantly, how to find joy in creating something that others can experience. What started as a high school experiment turned into a defining milestone in my career path.</p>
           <div style="height:12px"></div>
           <div style="display:flex;gap:12px;justify-content:center;margin-top:6px">
+            
             <a id="fnad2-live-btn" href="https://www.griffinsdomain.com/portfolio/fnad2" target="_blank" rel="noopener" style="text-decoration:none;">
+              <button style="padding:8px 12px;background:transparent;color:#fff;font-weight:600;cursor:pointer">View On Portfolio</button>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="psxPortfolioPopup" class="about-popup" style="display: none;">
+      <div class="popup-card popup-card-scrollable draggable">
+        <button class="popup-close" data-popup="psxPortfolioPopup" data-object="psx-portfolio" aria-label="Close">×</button>
+        <div class="popup-header">
+          <svg class="about-icon" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span class="popup-title">PSX — PORTFOLIO</span>
+        </div>
+        <div class="popup-body popup-body-scrollable">
+          <h3 class="about-section-title">Hook</h3>
+          <p class="popup-text">This website is a LEGACY, it's composed of hundreds of little meaningful references, and easter eggs from my life and my path as a CS Major. I've always had a love of horror, and I explored that in High School with my friend Dylan when we first made FNAD. The PSX Portfolio captures that passion and love for analogue horror and distills it into one experience. </p>
+          <br />
+          <h3 class="about-section-title">Intro</h3>
+          <p class="popup-text">The PSX project was my crash-course into 3D on the web. I sculpted and arranged the scene in Blender, exported a streamlined glTF, and spent weeks wiring it into a single-page Three.js app. The goal was not photorealism but mood: low-fi PSX vibes, heavy atmosphere, and tactile interactions. It forced me to learn shader tricks, lazy-loading patterns, and how to ship a playable experience that still works on phones.</p>
+          <br />
+          <h3 class="about-section-title">Skills Applied</h3>
+          <p class="popup-text">To make this work I leaned on a few specific toolsets: Three.js for rendering, GLSL for a lightweight pixelation pass, and GSAP for camera and UI choreography. Assets flowed from Blender → glTF, and I used raycasting to turn meshes into clickable, draggable portfolio cards. Mobile-first controls (MovementPad / RotationPad), video textures with synced audio, and a small achievements system (persisted to localStorage) rounded out the experience. Performance-wise, I relied on lazy imports and toggled postprocessing so the app degrades gracefully on weaker devices.</p>
+          <br />
+          <h3 class="about-section-title">The Experience</h3>
+          <p class="popup-text">Gameplay is intentionally light: teleport-orb navigation, optional walk-mode, and scene interactables that surface work samples. The Boisvert encounter was designed as a curated, teleport-driven scare — detection uses a camera-to-model raycast and a short countdown overlay before the chase state. This kept the encounter dramatic without needing complex pathfinding. The pixel shader and subtle postprocessing sell the retro look while keeping frame-rates reasonable.</p>
+          <br />
+          <h3 class="about-section-title">Conclusion</h3>
+          <p class="popup-text">This portfolio project was an absolute nightmare to make, and I had a blast doing it. I realize midway through creating it that my deadline of Halloween was unrealistic at best, and yet I still made it. In one month I learned about GPU optimization, 3D rendering, texture pipelines, raycasting, etc.. etc. This project was the intersection of front-end development and game design. I had a blast every step of the way.</p>
+          <div style="height:12px"></div>
+          <div style="display:flex;gap:12px;justify-content:center;margin-top:6px">
+            <a id="fnadWorld-github-btn" href="https://github.com/griffinhampton/PSX-Portfolio" target="_blank" rel="noopener" style="text-decoration:none;">
+              <button style="padding:8px 12px;background:transparent;color:#fff;font-weight:600;cursor:pointer">View on GitHub</button>
+            </a>
+            <a id="fnad2-live-btn" href="https://www.griffinsdomain.com/portfolio/psx-portfolio" target="_blank" rel="noopener" style="text-decoration:none;">
               <button style="padding:8px 12px;background:transparent;color:#fff;font-weight:600;cursor:pointer">View On Portfolio</button>
             </a>
           </div>

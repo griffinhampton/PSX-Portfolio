@@ -250,8 +250,16 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
         try {
             // If the win sequence has already been triggered, do not perform a loss.
             try { if (_winTriggered) { try { if (window && window.console) console.warn('[boisvert] performLoss suppressed: win already triggered'); } catch (e) {} return; } } catch (e) {}
-            try { hideItemsList(); } catch (e) {}
+            // If a loss has already been triggered, bail out immediately without
+            // touching item/UI state. This prevents subsequent calls during the
+            // death overlay from clearing recently-collected items.
             if (update._loseTriggered) return;
+
+            // Now that we know this is the first loss event, hide/reset the items
+            // list so respawn logic runs against a cleared internal state.
+            try { hideItemsList(); } catch (e) {}
+            try { resetBoisvertItems(); } catch (e) {}
+
             // Ensure any chase countdown UI/timers are stopped so they don't persist after death
             try { stopChaseMessageCountdown(); } catch (e) {}
             try { _countdownCompleted = false; } catch (e) {}
@@ -978,13 +986,14 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                         try { document.body.removeChild(_deathOverlay); } catch (e) {}
                     }
                 } catch (e) {}
-                // hide and reset items list when the player dies
-                try { hideItemsList(); } catch (e) {}
-                try { resetBoisvertItems(); } catch (e) {}
+                // NOTE: items list hide/reset moved to performLoss() so flags
+                // are cleared before respawning. See performLoss for details.
                 _deathOverlay = null;
                 _deathImage = null;
                 _deathBar = null;
                 _deathPlaying = false;
+                // Allow dying again after overlay finishes
+                try { update._loseTriggered = false; } catch (e) {}
             }, _deathFadeInMs + _deathFadeOutMs + 60);
         } catch (e) {
             _deathPlaying = false;

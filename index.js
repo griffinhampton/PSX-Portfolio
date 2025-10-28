@@ -261,8 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     notice.id = 'wasd-controls-notice';
                     notice.style.position = 'fixed';
                     notice.style.left = '50%';
-                    notice.style.top = '45%';
-                    notice.style.transform = 'translate(-50%, -50%)';
+                    notice.style.top = '45%';                notice.style.transform = 'translate(-50%, -50%)';
                     notice.style.pointerEvents = 'none';
                     notice.style.zIndex = '100001';
                     notice.style.textAlign = 'center';

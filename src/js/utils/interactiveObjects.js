@@ -18,12 +18,11 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
     const interactiveObjects = [];
     let currentlyActiveObject = null; // Track the currently active/rotating object
     let cooldownEndTime = 0; // Timestamp when cooldown ends
-    // Track lantern state and camera position for auto-reset
+
     let lastCameraPosition = null;
-    let activeLanterns = new Set(); // Track which lanterns are currently off
-    const CAMERA_MOVEMENT_THRESHOLD = 0.5; // How much camera must move to trigger reset
-    // NOTE: interactive indicators have been removed globally per UX request.
-    // This file no longer creates or manages DOM "exclamation" indicators.
+    let activeLanterns = new Set(); 
+    const CAMERA_MOVEMENT_THRESHOLD = 0.5; 
+
     
     // Store scene reference globally for close button access
     window.interactiveObjectsScene = scene;
@@ -228,8 +227,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 }
             });
         }
-        // Make cola visually unlit like painting/screen/paper so it "glows" and isn't affected by scene lights
-        // Also boost brightness: multiply the base color and disable tone mapping so it appears brighter
+
         if (config.objectName === 'cola') {
             object.traverse((child) => {
                 if (child.isMesh && child.material) {
@@ -287,14 +285,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         // No DOM indicators are created for interactive objects.
     }
 
-    // Developer debug helpers removed: click-log and verbose debug flags
-    
-    // createIndicator removed — indicators intentionally omitted.
 
-    /**
-     * Map fetchitem object names to the items list index used by boisvertGame
-     * Returns -1 if name doesn't map to a known fetch item
-     */
     function getFetchItemIndexByName(name) {
         if (!name) return -1;
         const n = name.toLowerCase();
@@ -385,6 +376,13 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 }
             });
             // respawn complete
+            try {
+                // Clear any active cooldowns so the player can immediately re-click
+                // respawned fetch items. Also clear the currently active object so
+                // no stale selection prevents interaction.
+                try { currentlyActiveObject = null; } catch (e) {}
+                try { cooldownEndTime = 0; } catch (e) {}
+            } catch (e) {}
         } catch (e) {
             console.error('[interactiveObjects] respawnFetchItems failed', e);
         }
@@ -471,12 +469,17 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
             }
         }
 
-        // If this object is part of Griffin's Domain (registered by name),
-        // show the griffin popup immediately. These objects are often
-        // registered without a targetPosition so the onComplete popup
-        // path (which runs after movement) never fires.
         try {
             const nameLowerQuick = ((config.objectName || object.name) || '').toLowerCase();
+            // PSX portfolio card popup
+            if (nameLowerQuick.includes('psx-portfolio') || nameLowerQuick.includes('psx_portfolio') || nameLowerQuick.includes('psxportfolio')) {
+                const popup = document.getElementById('psxPortfolioPopup');
+                if (popup) {
+                    popup.style.display = 'block';
+                    try { popup.dataset.activeObjectUuid = object.uuid; } catch (e) {}
+                }
+                try { window.achievements && window.achievements.unlock && window.achievements.unlock('clicked_griffins_domain'); } catch (e) {}
+            }
             // If the name matches any of the known griffin / FNAD tokens, show the appropriate popup
             if (nameLowerQuick.includes('griffins-domain') || nameLowerQuick.includes('fnad')) {
                 let popupId = 'griffinPopup';
@@ -496,9 +499,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         // debug logging removed
 
         // Store target position for jitter reference and animate to target if provided
-        if (Array.isArray(targetPos) && targetPos.length >= 3) {
-            object.userData.targetPosition = new THREE.Vector3(targetPos[0], targetPos[1], targetPos[2] + zOffset);
-
+    if (Array.isArray(targetPos) && targetPos.length >= 3) {
             // Animate to target position
             gsap.to(object.position, {
                 x: targetPos[0],
@@ -668,6 +669,16 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                     try { delete popup.dataset.activeObjectUuid; } catch (e) {}
                 }
             }
+            // Hide PSX portfolio popup when its objects reset
+            try {
+                if (nameLower.includes && nameLower.includes('psx-portfolio')) {
+                    const popup = document.getElementById('psxPortfolioPopup');
+                    if (popup) {
+                        popup.style.display = 'none';
+                        try { delete popup.dataset.activeObjectUuid; } catch (e) {}
+                    }
+                }
+            } catch (e) {}
         } catch (e) {}
 
         // Animate back to original position
@@ -693,9 +704,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
      * Handle pointer events
      */
     function onPointerDown(event) {
-        // Handle pointerdown for interactive objects (allow clicks even if controls report dragging)
-        // Check if camera is at an allowed position
-        // Debug: log pointerdown entry and camera allowed state
+
         let cameraAllowed = true;
             try {
                 const rectDbg = domElement.getBoundingClientRect();
@@ -759,7 +768,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                                             const nm = (p.name || '').toLowerCase();
                                             if (nm && nm.includes('fetchitem')) clickedIsFetchItem = true;
                                             // Treat any node whose name contains 'fnad' as a griffin-like object
-                                            if (nm && (nm.includes('griffins-domain') || nm.includes('fnad'))) clickedIsGriffin = true;
+                                            if (nm && (nm.includes('griffins-domain') || nm.includes('fnad')||nm.includes('psx'))) clickedIsGriffin = true;
                                         } catch (ee) {}
                                         p = p.parent;
                                     }
@@ -778,7 +787,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                         try {
                             const nm = (p.name || '').toLowerCase();
                             if (nm && nm.includes('fetchitem')) clickedIsFetchItem = true;
-                            if (nm && (nm.includes('griffins-domain') || nm.includes('fnad'))) clickedIsGriffin = true;
+                            if (nm && (nm.includes('griffins-domain') || nm.includes('fnad') || nm.includes('psx'))) clickedIsGriffin = true;
                         } catch (ee) {}
                         p = p.parent;
                     }
@@ -897,9 +906,15 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                         const _pos = new THREE.Vector3();
                         clicked.getWorldPosition(_pos);
                         const _dist = camera.position.distanceTo(_pos);
-                        if (typeof _dist === 'number' && _dist > 10) {
-                            // Too far away to interact
-                            return;
+                        if (typeof _dist === 'number') {
+                            // Allow PSX portfolio popups to be triggered from farther away
+                            const nameLowerCheck = ((clicked.userData && (clicked.userData.config && clicked.userData.config.objectName)) || clicked.name || '').toLowerCase();
+                            const isPsx = nameLowerCheck && (nameLowerCheck.includes('psx-portfolio') || nameLowerCheck.includes('psx_portfolio') || nameLowerCheck.includes('psxportfolio'));
+                            const DIST_LIMIT = isPsx ? 30 : 10;
+                            if (_dist > DIST_LIMIT) {
+                                // Too far away to interact
+                                return;
+                            }
                         }
                     } catch (e) {
                         // if anything goes wrong determining distance, fall back to allowing the click
@@ -1022,7 +1037,6 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
             if (!hits || hits.length === 0) return false;
 
             const first = hits[0];
-            // If the first hit is the object itself (or a descendant), it's not occluded
             let p = first.object;
             while (p) {
                 if (p === object) return false;
@@ -1032,27 +1046,15 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
             // If the first hit is very near the distance to the object, allow it
             if (first.distance >= distanceToObj - 0.05) return false;
 
-            // Otherwise check whether the first hit is a wall/backrooms geometry
-            try {
-                p = first.object;
-                while (p) {
-                    const nm = (p.name || '').toLowerCase();
-                    if (nm && (nm.includes('walls') || nm.includes('wall') || nm.includes('backrooms'))) {
-                        return true;
-                    }
-                    p = p.parent;
-                }
-            } catch (e) {
-                // ignore
-            }
-
-            return false;
+            // If something else is closer than the object, consider it occluded.
+            // This is a more generic check than relying on object name tokens so
+            // clicks won't pass through arbitrary geometry (walls, props, etc.).
+            return true;
         } catch (e) {
             return false;
         }
     }
 
-    // Find and setup all configured objects
     interactiveConfigs.forEach(config => {
         let found = false;
         scene.traverse((child) => {
@@ -1072,7 +1074,6 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
             root.traverse((child) => {
                 try {
                     if (child && child.name && child.name.toLowerCase().includes('fetchitem')) {
-                        // Avoid double-registration
                         if (child.userData && child.userData.isInteractive) {
                             return;
                         }
@@ -1086,10 +1087,10 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                         };
                         setupInteractiveObject(child, cfg);
                     }
-                    // Also auto-register any objects containing 'griffins-domain' or 'fnad' in their name
+
                     try {
                         const lname = child && child.name && child.name.toLowerCase();
-                        if (lname && (lname.includes('griffins-domain') || lname.includes('fnad'))) {
+                        if (lname && (lname.includes('griffins-domain') || lname.includes('fnad') || lname.includes('psx'))) {
                             // Avoid double-registration
                             if (child.userData && child.userData.isInteractive) {
                                 return;
@@ -1104,7 +1105,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                             };
                             setupInteractiveObject(child, cfg2);
                         }
-                        // Auto-register lantern objects by name
+
                         const lname2 = child && child.name && child.name.toLowerCase();
                         if (lname2 && lname2.includes('lantern')) {
                             if (child.userData && child.userData.isInteractive) {
@@ -1120,6 +1121,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                             };
                             setupInteractiveObject(child, cfgL);
                         }
+
                     } catch (e) {
                         // ignore individual child errors
                     }
@@ -1132,10 +1134,6 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         }
     }
 
-    /**
-     * MODIFIED toggleLantern function - tracks when lanterns are turned off
-     * (Placed inside setupInteractiveObjects so it can access activeLanterns)
-     */
     function toggleLantern(object) {
         try {
             // ensure an in-memory cache exists for lantern states
@@ -1198,18 +1196,15 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                     try { if ('visible' in light) light.visible = !light.visible; } catch (ee) {}
                 }
             });
-            
-            // Track lantern state for auto-reset
+  
             const key = (object && object.uuid) ? object.uuid : (object && object.name) ? object.name : 'lantern';
-            
-            // If we just turned it off, add to active lanterns set
+
             if (wasOn && !nowOn) {
                 activeLanterns.add(key);
             } else if (nowOn) {
                 activeLanterns.delete(key);
             }
-            
-            // Persist the resulting on/off state
+
             try {
                 let anyOn = nowOn;
                 lights.forEach(l => {
@@ -1236,7 +1231,6 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         }
     }
 
-    // Register existing items now (scan the whole scene)
     try {
         registerFetchItemsInTree(scene);
         const found = interactiveObjects.filter(o => o.userData && o.userData.config && o.userData.config.isFetchItem).length;
@@ -1244,7 +1238,6 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         console.error('[interactiveObjects] Initial fetchitem registration failed:', e);
     }
 
-    // Monkey-patch scene.add to auto-register any fetchitems added later
     try {
         if (scene && typeof scene.add === 'function') {
             __originalSceneAdd = scene.add.bind(scene);
@@ -1252,7 +1245,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                 const res = __originalSceneAdd(...objs);
                 try {
                     for (const o of objs) {
-                        // register any fetchitems inside the added subtree
+
                         registerFetchItemsInTree(o);
                     }
                 } catch (e) {
@@ -1265,17 +1258,13 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         console.error('[interactiveObjects] Failed to monkey-patch scene.add:', e);
     }
 
-    // Register with cursor manager for hover detection
     registerInteractiveManager(() => interactiveObjects);
 
-    // Add event listeners
     domElement.addEventListener('pointerdown', onPointerDown);
     domElement.addEventListener('touchstart', onPointerDown, { passive: false });
 
-    // Setup close button handlers for all popups
     setupPopupCloseButtons();
 
-    // Prepare manager object so we can expose helpers and restore state on dispose
     const manager = {
         update,
         forceRegisterFetchItems() {
@@ -1287,10 +1276,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
             }
         },
         respawnFetchItems,
-        // Clear the currently active object if it matches the provided object.
-        // This allows external callers (popup close handlers) to tell the manager
-        // to reset state for an object that was clicked and to allow it to be
-        // clicked again immediately.
+
         clearActiveObject(obj) {
             try {
                 if (currentlyActiveObject && obj && currentlyActiveObject === obj) {
@@ -1303,9 +1289,6 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         dispose() {
             domElement.removeEventListener('pointerdown', onPointerDown);
             domElement.removeEventListener('touchstart', onPointerDown);
-
-            // No indicator DOM cleanup required (indicators removed).
-            // restore scene.add if we patched it
             try {
                 if (__originalSceneAdd && scene && scene.add) {
                     scene.add = __originalSceneAdd;
@@ -1347,13 +1330,7 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
     return manager;
 }
 
-    /**
-     * Find lights likely associated with a lantern object.
-     * Tries several strategies:
-     *  - explicit userData.lightUuid or lightName on the object
-     *  - global light managers on window (tolerant checks)
-     *  - search the scene for Light objects whose name contains 'lantern' or the object's name token
-     */
+
     function findLanternLights(object) {
         const results = [];
         try {
@@ -1436,16 +1413,6 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
         return results.filter(l => { if (!l || !l.uuid) return false; if (seen.has(l.uuid)) return false; seen.add(l.uuid); return true; });
     }
 
-    /**
-     * Toggle the lantern's lights on/off. Uses intensity when available, otherwise toggles visibility.
-     */
-        // Module-level toggleLantern removed: replaced by a version inside setupInteractiveObjects
-
-// Developer dump/clear helpers removed.
-
-/**
- * Setup close button handlers for popup cards
- */
 function setupPopupCloseButtons() {
     const closeButtons = document.querySelectorAll('.popup-close');
     
@@ -1454,8 +1421,6 @@ function setupPopupCloseButtons() {
         if (button.dataset.closeHandlerAttached) {
             return; // Skip if already has handler
         }
-        
-        // Mark as handled to prevent duplicate listeners
         button.dataset.closeHandlerAttached = 'true';
         
         button.addEventListener('click', (event) => {
@@ -1470,10 +1435,6 @@ function setupPopupCloseButtons() {
                 popup.style.display = 'none';
             }
             
-            // Reset the associated object. Prefer to use the popup's recorded UUID
-            // (set when the popup was shown) so we reliably clear the exact object
-            // instance that was activated (this fixes FNAD re-open issues when the
-            // scene contains different node instances / ancestors).
             try {
                 if (popup && popup.dataset && popup.dataset.activeObjectUuid && window.interactiveObjectsList) {
                     const uuid = popup.dataset.activeObjectUuid;
@@ -1491,25 +1452,19 @@ function setupPopupCloseButtons() {
                     return; // handled by UUID path
                 }
             } catch (e) {
-                // ignore and fall back to name-based reset
+               
             }
 
-            // Fallback: match either exact name or substring so
-            // popups that use a generic data-object like 'griffins-domain' can
-            // reset objects named 'griffins-domain-xxx'.
             if (objectName && window.interactiveObjectsList) {
                 // Prefer exact match, fall back to first object whose name includes the objectName token
                 let objectToReset = window.interactiveObjectsList.find(obj => obj.name === objectName);
                 if (!objectToReset) {
                     objectToReset = window.interactiveObjectsList.find(obj => obj.name && objectName && obj.name.toLowerCase().includes(objectName.toLowerCase()));
-                    // Special-case: the griffin popup is used for FNAD objects too; allow closing to reset FNAD objects
                     if (!objectToReset && objectName === 'griffins-domain') {
-                        objectToReset = window.interactiveObjectsList.find(obj => obj.name && (obj.name.toLowerCase().includes('griffins-domain') || obj.name.toLowerCase().includes('fnad')));
+                        objectToReset = window.interactiveObjectsList.find(obj => obj.name && (obj.name.toLowerCase().includes('griffins-domain') || obj.name.toLowerCase().includes('fnad') || obj.name.toLowerCase().includes('psx')));
                     }
                 }
                 if (objectToReset) {
-                    // Prefer asking the interactive manager to reset internal state
-                    // so it can clear currentlyActiveObject and reset internal state.
                     try {
                         if (window && window.interactiveObjectsManager && typeof window.interactiveObjectsManager.clearActiveObject === 'function') {
                             window.interactiveObjectsManager.clearActiveObject(objectToReset);
