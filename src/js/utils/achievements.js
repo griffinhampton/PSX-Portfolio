@@ -131,20 +131,78 @@ function ensureContainers() {
         container = document.createElement('div');
         container.id = 'achievements-panel';
         container.className = 'achievements-panel hidden';
-        const header = document.createElement('div');
-        header.className = 'achievements-panel-header';
-        header.innerText = 'Achievements';
-        const close = document.createElement('button');
-        close.className = 'achievements-panel-close';
-        close.innerText = '×';
-        close.addEventListener('click', () => container.classList.add('hidden'));
-        header.appendChild(close);
-        container.appendChild(header);
+    const header = document.createElement('div');
+    header.className = 'achievements-panel-header';
+    // Use a title span so we can insert the progress bar directly beneath it
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'achievements-panel-title';
+    titleSpan.innerText = 'Achievements';
+    const close = document.createElement('button');
+    close.className = 'achievements-panel-close';
+    close.innerText = '×';
+    close.addEventListener('click', () => container.classList.add('hidden'));
+    // Create a left wrapper to stack the title and progress vertically so the
+    // header (which is a flex row) keeps the close button on the right.
+    const leftWrapper = document.createElement('div');
+    leftWrapper.style.display = 'flex';
+    leftWrapper.style.flexDirection = 'column';
+    leftWrapper.style.gap = '6px';
+    leftWrapper.appendChild(titleSpan);
 
-        const list = document.createElement('div');
+        // Progress bar area: insert into the header so it appears underneath the
+        // title and above the content list (per design request).
+        const progressWrap = document.createElement('div');
+        progressWrap.id = 'achievements-progress-wrap';
+        progressWrap.style.display = 'flex';
+        progressWrap.style.flexDirection = 'column';
+        progressWrap.style.alignItems = 'stretch';
+        progressWrap.style.padding = '8px 12px 6px 12px';
+        progressWrap.style.gap = '6px';
+        progressWrap.style.width = '100%';
+
+        const progressText = document.createElement('div');
+        progressText.id = 'achievements-progress-text';
+        progressText.style.fontSize = '13px';
+        progressText.style.color = '#000';
+        progressText.style.textAlign = 'center';
+        progressText.style.fontFamily = 'inherit';
+        progressText.style.fontWeight = '600';
+        progressText.innerText = '0 / 0 (0%)';
+
+        const progressBarBg = document.createElement('div');
+        progressBarBg.id = 'achievements-progress-bg';
+        progressBarBg.style.height = '14px';
+        // empty area uses a light background; the fill will be red
+        progressBarBg.style.background = 'rgba(255,255,255,0.9)';
+        progressBarBg.style.borderRadius = '6px';
+        progressBarBg.style.overflow = 'hidden';
+        progressBarBg.style.boxShadow = 'inset 0 1px 0 rgba(0,0,0,0.08)';
+        // Black border per request
+        progressBarBg.style.border = '2px solid #000';
+
+        const progressFill = document.createElement('div');
+        progressFill.id = 'achievements-progress-fill';
+        progressFill.style.height = '100%';
+        progressFill.style.width = '0%';
+        // Red fill colors
+        progressFill.style.background = 'linear-gradient(90deg,#ff5252,#e53935)';
+        progressFill.style.transition = 'width 400ms ease';
+
+    progressBarBg.appendChild(progressFill);
+    // Place the bar first, then the text beneath it
+    progressWrap.appendChild(progressBarBg);
+    progressWrap.appendChild(progressText);
+    // Place progress inside the left wrapper beneath the title
+    leftWrapper.appendChild(progressWrap);
+
+    // Build header: left wrapper (title + progress) and close button on right
+    header.appendChild(leftWrapper);
+    header.appendChild(close);
+
+    const list = document.createElement('div');
         list.className = 'achievements-list';
         list.id = 'achievements-list';
-        container.appendChild(list);
+    container.appendChild(list);
 
         const resetBtn = document.createElement('button');
         resetBtn.className = 'achievements-reset';
@@ -175,6 +233,23 @@ function renderPanel() {
         item.appendChild(title);
         item.appendChild(desc);
         list.appendChild(item);
+    }
+    // Update progress bar: number and percent complete
+    try {
+        const total = Math.max(0, achievementsMap.size || 0);
+        // Count only unlocked achievements that are present in the current map
+        let completed = 0;
+        for (const id of unlockedSet) {
+            if (achievementsMap.has(id)) completed++;
+        }
+        const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+        const progressText = container.querySelector('#achievements-progress-text');
+        const progressFill = container.querySelector('#achievements-progress-fill');
+        if (progressText) progressText.innerText = `${completed} / ${total} (${percent}%)`;
+        if (progressFill) progressFill.style.width = `${percent}%`;
+    } catch (e) {
+        // ignore progress update errors
     }
 }
 
@@ -341,6 +416,9 @@ function unlockAchievement(id) {
     try {
         window.dispatchEvent(new CustomEvent('achievement:unlocked', { detail: { id, achievement: ach } }));
     } catch (e) {}
+    // After any unlock, verify whether the "collected_all" achievement
+    // should be granted (i.e. all other registered achievements are unlocked).
+    try { checkCollectAllAchievement(); } catch (e) {}
     return true;
 }
 
@@ -348,6 +426,24 @@ function resetAchievements() {
     unlockedSet = new Set();
     saveUnlocked();
     renderPanel();
+}
+
+// If every registered achievement (excluding the collector) is unlocked,
+// unlock the special 'collected_all' achievement.
+function checkCollectAllAchievement() {
+    const collectorId = 'collected_all';
+    // Only proceed if the collector is registered and not already unlocked
+    if (!achievementsMap.has(collectorId)) return;
+    if (unlockedSet.has(collectorId)) return;
+
+    for (const [id] of achievementsMap.entries()) {
+        if (id === collectorId) continue;
+        if (!unlockedSet.has(id)) {
+            return; // found an achievement not yet unlocked
+        }
+    }
+    // All others are unlocked — grant the collector achievement
+    try { unlockAchievement(collectorId); } catch (e) {}
 }
 
 // Convenience: register some common achievements
@@ -362,7 +458,7 @@ export function registerDefaultAchievements() {
         { id: 'clicked_paper', title: 'Find my Pages...', description: 'You examined the paper on the table (my resume).' },
         { id: 'clicked_painting', title: 'Art Critic', description: 'You inspected the painting.' },
         { id: 'clicked_cola', title: 'Is This a Fallout Reference?', description: 'You inspected the LinkedIn Cola bottle.' },
-        { id: 'clicked_griffins_domain', title: "Griffin's Domain", description: "You inspected an item from Griffin's Domain." },
+        { id: 'clicked_griffins_domain', title: "..Sooo do you Wa", description: "You clicked one of the portfolio cards." },
     { id: 'clicked_easter', title: 'Easter Hunter', description: 'You found the hidden easter egg.' },
         { id: 'watched_screen', title: 'Film Critic', description: 'You played the video on the TV.' },
         { id: 'visited_first_dlc', title: 'Where am I..?', description: 'You traveled to the first area of the DLC.' },
@@ -371,6 +467,8 @@ export function registerDefaultAchievements() {
         { id: 'game_start', title: 'Let the Hunt Begin', description:'You initiated the game with Room.'},
         { id: 'game_lost', title: 'You Died...', description: 'You lost the game with Room.' },
         { id: 'game_won', title: 'Nightmare Slain', description:'You won the game with Room.'},
+        // Special collector achievement: unlocked when every other achievement is obtained
+        { id: 'collected_all', title: 'Completionist', description: 'You collected every achievement.' },
     ];
     for (const a of defaults) achievementsMap.set(a.id, a);
     for (const a of extras) achievementsMap.set(a.id, a);

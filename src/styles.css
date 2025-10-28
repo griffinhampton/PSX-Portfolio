@@ -310,29 +310,10 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* Nudge the settings close button upward so it doesn't intersect the range */
-#settingsCloseBtn {
-  position: absolute;
-  right: 8px;
-  top: 2px; /* higher up */
-  background: transparent;
-  border: none;
-  color: #fff;
-  font-size: 18px;
-  cursor: pointer;
-  z-index: 10002;
-}
+
 
 /* Achievements close button styling: black background */
-#achievementsCloseBtn {
-  background: #000000 !important;
-  color: #ffffff !important;
-  border: none !important;
-  padding: 4px 8px !important; /* slightly larger padding for bigger X */
-  border-radius: 0 !important; /* square corners per request */
-  cursor: pointer !important;
-  font-size: 20px !important; /* increased font size for the × */
-  line-height: 1 !important;
-}
+
 
 /* Small safety: ensure settings panel internals have spacing so the X doesn't overlap */
 #settingsPanel label[for="dragSpeedRange"] { margin-bottom: 10px; display:block; }

@@ -13,6 +13,17 @@ export function registerVideo(videoElement) {
     if (videoElement && !videoElements.includes(videoElement)) {
         videoElements.push(videoElement);
         videoElement.muted = isMuted;
+        // Also register with the global audio registry so master volume controls pick it up
+        try {
+            if (typeof window !== 'undefined') {
+                window.__audioRegistry = window.__audioRegistry || [];
+                if (!window.__audioRegistry.includes(videoElement)) window.__audioRegistry.push(videoElement);
+                // If a master volume is set, apply it to the newly registered video
+                if (typeof window.__masterVolume === 'number') {
+                    try { videoElement.volume = Math.max(0, Math.min(1, window.__masterVolume)); } catch (e) {}
+                }
+            }
+        } catch (e) {}
     }
 }
 
@@ -25,6 +36,12 @@ export function unregisterVideo(videoElement) {
     if (index > -1) {
         videoElements.splice(index, 1);
     }
+    try {
+        if (typeof window !== 'undefined' && window.__audioRegistry && Array.isArray(window.__audioRegistry)) {
+            const i = window.__audioRegistry.indexOf(videoElement);
+            if (i > -1) window.__audioRegistry.splice(i, 1);
+        }
+    } catch (e) {}
 }
 
 /**

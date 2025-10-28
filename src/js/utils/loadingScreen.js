@@ -159,6 +159,17 @@ function showWelcomePopup() {
             welcomePopup.style.display = 'none';
             // Emit an event so other parts of the app know the user entered
             try { window.dispatchEvent(new CustomEvent('welcome:entered')); } catch (e) {}
+            // Also automatically open the Instructions popup so the user can read them immediately
+            try {
+                const instr = document.getElementById('instructionsPopup');
+                if (instr) {
+                    instr.style.display = 'block';
+                    // ensure body is scrolled to top
+                    try { const body = instr.querySelector('.popup-body'); if (body) body.scrollTop = 0; } catch (e) {}
+                    // focus the close button for accessibility
+                    try { const c = document.getElementById('instructionsCloseBtn'); if (c) c.focus(); } catch (e) {}
+                }
+            } catch (e) {}
         }, 300);
     });
 }

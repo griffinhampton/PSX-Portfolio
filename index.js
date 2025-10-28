@@ -248,6 +248,48 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (e) {}
     } catch (e) {}
+
+    // If the user just visited the first DLC and is on desktop, show a brief WASD hint
+    try {
+        const ev = (arguments && arguments[0]) ? arguments[0] : null;
+        const id = ev && ev.detail ? ev.detail.id : null;
+        try {
+            if (id === 'visited_first_dlc' && typeof isMobileDevice === 'function' && !isMobileDevice()) {
+                // Create a transient notice styled like the Boisvert chase message
+                try {
+                    const notice = document.createElement('div');
+                    notice.id = 'wasd-controls-notice';
+                    notice.style.position = 'fixed';
+                    notice.style.left = '50%';
+                    notice.style.top = '45%';
+                    notice.style.transform = 'translate(-50%, -50%)';
+                    notice.style.pointerEvents = 'none';
+                    notice.style.zIndex = '100001';
+                    notice.style.textAlign = 'center';
+                    notice.style.color = '#ffffff';
+                    notice.style.fontFamily = "'VT323', monospace";
+                    notice.style.textShadow = '0 2px 8px rgba(0,0,0,0.9)';
+
+                    const msg = document.createElement('div');
+                    msg.innerText = 'WASD CONTROLS ENABLED';
+                    msg.style.fontSize = '32px';
+                    msg.style.fontWeight = '400';
+                    msg.style.letterSpacing = '2px';
+                    msg.style.opacity = '0.95';
+                    msg.style.color = 'red';
+                    msg.style.margin = '0';
+
+                    notice.appendChild(msg);
+                    document.body.appendChild(notice);
+
+                    // Remove after 3s
+                    setTimeout(() => {
+                        try { if (notice && notice.parentNode) notice.parentNode.removeChild(notice); } catch (e) {}
+                    }, 3000);
+                } catch (e) {}
+            }
+        } catch (e) {}
+    } catch (e) {}
 });
 
 // Centralized UI initialization: move inline index.html scripts here
@@ -538,9 +580,10 @@ function setMasterVolume(value) {
         // Update all <audio> elements in the DOM
         try {
             const audios = document.querySelectorAll('audio');
-            audios.forEach(a => {
-                try { a.volume = v; } catch (e) {}
-            });
+            audios.forEach(a => { try { a.volume = v; } catch (e) {} });
+            // Also update <video> elements so movie textures respect master volume
+            const videos = document.querySelectorAll('video');
+            videos.forEach(a => { try { a.volume = v; } catch (e) {} });
         } catch (e) {}
 
         // Update any registered audio objects in a global registry
@@ -557,7 +600,7 @@ function setMasterVolume(value) {
                     const val = window[key];
                     if (!val) return;
                     // HTMLAudioElement
-                    if (val instanceof HTMLAudioElement) {
+                    if (val instanceof HTMLAudioElement || (typeof HTMLVideoElement !== 'undefined' && val instanceof HTMLVideoElement)) {
                         try { val.volume = v; } catch (e) {}
                         return;
                     }
@@ -705,6 +748,79 @@ function renderAchievementsPopup() {
     item.appendChild(icon);
         container.appendChild(item);
     });
+    // Insert progress bar into the popup header (below title) so it appears
+    // above the list. This keeps consistent placement with the in-panel UI.
+    try {
+        const total = Array.isArray(list) ? list.length : 0;
+        const completed = Array.isArray(list) ? list.filter(x => x.unlocked).length : 0;
+        const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+        const popup = document.getElementById('achievementsPopup');
+        const header = popup ? popup.querySelector('.popup-header') : null;
+        if (header) {
+            // Avoid recreating if already present (check globally by id because
+            // the progress element may be inserted as a sibling of the header)
+            let progressWrap = document.getElementById('achievements-popup-progress-wrap');
+            if (!progressWrap) {
+                progressWrap = document.createElement('div');
+                progressWrap.id = 'achievements-popup-progress-wrap';
+                progressWrap.style.display = 'flex';
+                progressWrap.style.flexDirection = 'column';
+                progressWrap.style.alignItems = 'stretch';
+                progressWrap.style.padding = '6px 8px 8px 8px';
+                progressWrap.style.gap = '6px';
+                progressWrap.style.width = '100%';
+
+                const progressText = document.createElement('div');
+                progressText.id = 'achievements-popup-progress-text';
+                progressText.style.fontSize = '13px';
+                progressText.style.color = '#000';
+                progressText.style.textAlign = 'center';
+                progressText.style.fontFamily = 'inherit';
+                progressText.style.fontWeight = '600';
+                progressText.innerText = `${completed} / ${total} (${percent}%)`;
+
+                const progressBarBg = document.createElement('div');
+                progressBarBg.id = 'achievements-popup-progress-bg';
+                progressBarBg.style.height = '14px';
+                progressBarBg.style.background = 'rgba(255,255,255,0.9)';
+                progressBarBg.style.borderRadius = '6px';
+                progressBarBg.style.overflow = 'hidden';
+                progressBarBg.style.border = '2px solid #000';
+
+                const progressFill = document.createElement('div');
+                progressFill.id = 'achievements-popup-progress-fill';
+                progressFill.style.height = '100%';
+                progressFill.style.width = `${percent}%`;
+                progressFill.style.background = 'linear-gradient(90deg,#ff5252,#e53935)';
+                progressFill.style.transition = 'width 400ms ease';
+
+                progressBarBg.appendChild(progressFill);
+                // Put the progress bar first so the numeric text appears beneath it
+                progressWrap.appendChild(progressBarBg);
+                progressWrap.appendChild(progressText);
+                // Insert the progress bar as a sibling directly after the popup header
+                // so it appears beneath the trophy image and spans the full header width.
+                try {
+                    if (header && header.parentNode) {
+                        header.parentNode.insertBefore(progressWrap, header.nextSibling);
+                        // ensure it stretches to the same width as header
+                        progressWrap.style.width = '100%';
+                    } else {
+                        header.appendChild(progressWrap);
+                    }
+                } catch (e) {
+                    try { header.appendChild(progressWrap); } catch (ee) {}
+                }
+            } else {
+                // Update existing (it may be a sibling of header)
+                const text = document.getElementById('achievements-popup-progress-text');
+                const fill = document.getElementById('achievements-popup-progress-fill');
+                if (text) text.innerText = `${completed} / ${total} (${percent}%)`;
+                if (fill) fill.style.width = `${percent}%`;
+            }
+        }
+    } catch (e) {}
 }
 
 // Open popup handler: ensure popup content is up to date
@@ -729,7 +845,7 @@ if (achToggle) {
 // Reset button removed from UI - no wiring required
 
 // Keep popup updated when an achievement is unlocked
-window.addEventListener('achievement:unlocked', () => {
+window.addEventListener('achievement:unlocked', (ev) => {
     // Update the achievements popup and show a red exclamation badge on the toggle
     try { renderAchievementsPopup(); } catch (e) {}
 
@@ -766,6 +882,47 @@ window.addEventListener('achievement:unlocked', () => {
             }
         }
     } catch (e) { /* ignore */ }
+
+    // If the user just visited the first DLC and is on desktop, show a brief WASD hint
+    try {
+        const id = ev && ev.detail ? ev.detail.id : null;
+        try {
+            if (id === 'visited_first_dlc' && typeof isMobileDevice === 'function' && !isMobileDevice()) {
+                // Create a transient notice styled like the Boisvert chase message
+                try {
+                    const notice = document.createElement('div');
+                    notice.id = 'wasd-controls-notice';
+                    notice.style.position = 'fixed';
+                    notice.style.left = '50%';
+                    notice.style.top = '45%';
+                    notice.style.transform = 'translate(-50%, -50%)';
+                    notice.style.pointerEvents = 'none';
+                    notice.style.zIndex = '100001';
+                    notice.style.textAlign = 'center';
+                    notice.style.color = '#ffffff';
+                    notice.style.fontFamily = "'VT323', monospace";
+                    notice.style.textShadow = '0 2px 8px rgba(0,0,0,0.9)';
+
+                    const msg = document.createElement('div');
+                    msg.innerText = 'WASD CONTROLS ENABLED';
+                    msg.style.fontSize = '32px';
+                    msg.style.fontWeight = '400';
+                    msg.style.letterSpacing = '2px';
+                    msg.style.opacity = '0.95';
+                    msg.style.color = 'red';
+                    msg.style.margin = '0';
+
+                    notice.appendChild(msg);
+                    document.body.appendChild(notice);
+
+                    // Remove after 3s
+                    setTimeout(() => {
+                        try { if (notice && notice.parentNode) notice.parentNode.removeChild(notice); } catch (e) {}
+                    }, 3000);
+                } catch (e) {}
+            }
+        } catch (e) {}
+    } catch (e) {}
 });
 
 // Setup Boisvert teleporter (wait for model to load)
