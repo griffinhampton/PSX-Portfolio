@@ -349,13 +349,90 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
             group.remove(picked);
 
             const duration = 1.5;
+
+            // Ensure a global footsteps audio exists and is registered
+            try {
+                    if (typeof window !== 'undefined') {
+                    if (!window.__footstepsAudio) {
+                        const fa = document.createElement('audio');
+                        fa.src = 'src/sounds/footsteps-in-thin-snow-46199.mp3';
+                        fa.loop = true; // loop so continuous footsteps play while navigating
+                        fa.preload = 'auto';
+                        fa.style.display = 'none';
+                        try { document.body.appendChild(fa); } catch (e) {}
+                        try { window.__audioRegistry = window.__audioRegistry || []; if (!window.__audioRegistry.includes(fa)) window.__audioRegistry.push(fa); } catch (e) {}
+                        window.__footstepsAudio = fa;
+                    }
+                }
+            } catch (e) {}
+
             gsap.to(camera.position, {
                 x: targetPos.x,
                 y: targetPos.y,
                 z: targetPos.z,
                 duration,
                 ease: 'power2.inOut',
+                onStart() {
+                    // Begin fading winter-wind as soon as navigation starts
+                    try {
+                        const toIdx = (typeof targetIdx === 'number') ? targetIdx : null;
+                        // Determine the TV index (last base navigation index) from basePositionsLength
+                        const effectiveTvIdx = (typeof basePositionsLength === 'number' && basePositionsLength > 0) ? (basePositionsLength - 1) : (positions.length - 1);
+                        let targetVol = 0.6;
+                        if (toIdx === effectiveTvIdx) {
+                            targetVol = 0.0; // mute at TV
+                        } else if (toIdx === 5) {
+                            targetVol = 0.08; // dampened indoor index
+                        } else {
+                            targetVol = 0.6;
+                        }
+                        const fadeDur = duration; // match camera tween duration (1.5s)
+                        if (typeof window !== 'undefined' && window.__winterWindAudio) {
+                            try {
+                                if (typeof gsap === 'object' && typeof gsap.to === 'function') {
+                                    gsap.to(window.__winterWindAudio, { volume: Math.max(0, Math.min(1, targetVol)), duration: fadeDur, ease: 'linear' });
+                                } else {
+                                    // simple interval fallback
+                                    const a = window.__winterWindAudio;
+                                    const start = (typeof a.volume === 'number') ? a.volume : 0;
+                                    const steps = Math.max(1, Math.round((fadeDur * 60)));
+                                    let i = 0;
+                                    const delta = (targetVol - start) / steps;
+                                    const iv = setInterval(() => {
+                                        try {
+                                            i++;
+                                            a.volume = Math.max(0, Math.min(1, start + delta * i));
+                                            if (i >= steps) clearInterval(iv);
+                                        } catch (e) { clearInterval(iv); }
+                                    }, Math.max(10, Math.round((fadeDur * 1000) / steps)));
+                                }
+                            } catch (e) {
+                                try { window.__winterWindAudio.volume = Math.max(0, Math.min(1, targetVol)); } catch (e) {}
+                            }
+                        }
+                    } catch (e) {}
+
+                    // Play footsteps when navigation starts except when navigating to index 5
+                    // or when specifically moving from index 5 -> index 4 (quiet transition)
+                    try {
+                        const fromIdx = (typeof currentIndex === 'number') ? currentIndex : null;
+                        const toIdx = (typeof targetIdx === 'number') ? targetIdx : null;
+                        const skip = (toIdx === 5) || (fromIdx === 5 && toIdx === 4);
+                        if (!skip && typeof window !== 'undefined' && window.__footstepsAudio) {
+                            // Play (or resume) without resetting currentTime so pause preserves position
+                            try { window.__footstepsAudio.play().catch(()=>{}); } catch (e) {}
+                        }
+                    } catch (e) {}
+                },
                 onComplete: () => {
+                    // Stop footsteps when navigation completes
+                    try {
+                        if (typeof window !== 'undefined' && window.__footstepsAudio) {
+                            // pause but DO NOT reset playback position so future play resumes
+                            try { window.__footstepsAudio.pause(); } catch (e) {}
+                        }
+                    } catch (e) {}
+
                     currentIndex = targetIdx;
                     updateVisibleOrbs();
                     
@@ -380,6 +457,21 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
                             if (window.boisvertTeleporter && typeof window.boisvertTeleporter.lookAtBoisvert === 'function') {
                                 window.boisvertTeleporter.lookAtBoisvert();
                             }
+                        }
+                    } catch (e) {}
+                },
+                onKill() {
+                    // Also stop footsteps if the tween is killed
+                    try {
+                        if (typeof window !== 'undefined' && window.__footstepsAudio) {
+                            // pause but DO NOT reset playback position so future play resumes
+                            try { window.__footstepsAudio.pause(); } catch (e) {}
+                        }
+                    } catch (e) {}
+                    // Notify others that navigation was cancelled/killed so audio can be reverted
+                    try {
+                        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                            try { window.dispatchEvent(new CustomEvent('orb:cancelled', { detail: { from: currentIndex, to: targetIdx } })); } catch (e) {}
                         }
                     } catch (e) {}
                 }

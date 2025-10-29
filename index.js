@@ -149,6 +149,30 @@ if (controls && typeof controls.setShouldDisableLookFn === 'function') {
         // Otherwise, no clamping
         return null;
     });
+
+    // If a navigation tween is killed (cancelled), revert screen audio to the previous state
+    window.addEventListener('orb:cancelled', (ev) => {
+        try {
+            const from = ev && ev.detail ? ev.detail.from : null;
+            // If we have a screenVideo controller, restore audio to what 'from' dictates
+            if (typeof screenVideo !== 'undefined' && screenVideo) {
+                const allowedAudioIndices = [];
+                if (navigationPositions.length > 4) allowedAudioIndices.push(4);
+                if (navigationPositions.length > 5) allowedAudioIndices.push(5);
+
+                    if (allowedAudioIndices.includes(from)) {
+                        const vol = (from === 4) ? 0.25 : (from === 5) ? 0.6 : 0.5;
+                        try { screenVideo.unmute(); } catch (e) {}
+                        try { screenVideo.setVolume(vol); } catch (e) {}
+                        _lastScreenAudioIndex = from;
+                    } else {
+                        try { screenVideo.pause(); } catch (e) {}
+                        try { screenVideo.mute(); } catch (e) {}
+                        _lastScreenAudioIndex = null;
+                    }
+            }
+        } catch (e) {}
+    });
 }
 
 // Initialize unified cursor manager
@@ -959,6 +983,56 @@ setTimeout(() => {
 let cameraInteractiveManager = null;
 let screenVideo = null;
 
+// Track last orb index for audio-directional fades
+let _lastScreenAudioIndex = null;
+
+// Fade helper for screen video (uses gsap if present, otherwise interval fallback)
+function fadeScreenVideoTo(targetVol, duration = 1.5) {
+    try {
+        if (typeof screenVideo === 'undefined' || !screenVideo) return;
+        const v = (typeof screenVideo.getVideo === 'function') ? screenVideo.getVideo() : null;
+        // If we can't get underlying video element, fall back to controller setVolume
+        if (!v) {
+            try { screenVideo.setVolume(Math.max(0, Math.min(1, targetVol))); } catch (e) {}
+            if (targetVol === 0) { try { screenVideo.pause(); screenVideo.mute(); } catch (e) {} }
+            return;
+        }
+
+        try {
+            if (typeof gsap === 'object' && typeof gsap.to === 'function') {
+                gsap.to(v, { volume: Math.max(0, Math.min(1, targetVol)), duration, ease: 'linear', onComplete() {
+                    if (targetVol === 0) {
+                        try { v.pause(); } catch (e) {}
+                        try { if (typeof screenVideo.mute === 'function') screenVideo.mute(); } catch (e) {}
+                    }
+                }});
+            } else {
+                // interval fallback
+                const start = (typeof v.volume === 'number') ? v.volume : 0;
+                const steps = Math.max(1, Math.round(duration * 60));
+                let i = 0;
+                const delta = (targetVol - start) / steps;
+                const iv = setInterval(() => {
+                    try {
+                        i++;
+                        v.volume = Math.max(0, Math.min(1, start + delta * i));
+                        if (i >= steps) {
+                            clearInterval(iv);
+                            if (targetVol === 0) {
+                                try { v.pause(); } catch (e) {}
+                                try { if (typeof screenVideo.mute === 'function') screenVideo.mute(); } catch (e) {}
+                            }
+                        }
+                    } catch (e) { clearInterval(iv); }
+                }, Math.max(10, Math.round((duration * 1000) / steps)));
+            }
+        } catch (e) {
+            try { v.volume = Math.max(0, Math.min(1, targetVol)); } catch (ee) {}
+            if (targetVol === 0) { try { v.pause(); } catch (e) {} }
+        }
+    } catch (e) {}
+}
+
 setTimeout(() => {
     // Find the screen object in the scene
     let screenObject = null;
@@ -1011,6 +1085,38 @@ setTimeout(() => {
                 // Show screen popup with a single return control
                 try {
                     console.debug('[cameraInteractive] screen interaction detected');
+                    // Treat clicking the TV/screen as arriving at the "index 5" audio state.
+                    // Dispatch an orb:arrived event with index=5 (or fall back to last position)
+                    try {
+                        const tvIdx = (Array.isArray(navigationPositions) && navigationPositions.length > 5) ? 5 : (navigationPositions.length - 1);
+                        try { window.dispatchEvent(new CustomEvent('orb:arrived', { detail: { index: tvIdx } })); } catch (e) {}
+                    } catch (e) {}
+
+                    // Also immediately dampen the winter-wind ambient to the indoor level (index 5 uses ~0.08)
+                    try {
+                        if (typeof window !== 'undefined' && window.__winterWindAudio) {
+                            const fadeDur = (typeof config.moveDuration === 'number') ? config.moveDuration : 1.5;
+                            if (typeof gsap === 'object' && typeof gsap.to === 'function') {
+                                try { gsap.to(window.__winterWindAudio, { volume: Math.max(0, Math.min(1, 0.08)), duration: fadeDur, ease: 'linear' }); } catch (e) {}
+                            } else {
+                                // interval fallback
+                                try {
+                                    const a = window.__winterWindAudio;
+                                    const start = (typeof a.volume === 'number') ? a.volume : 0;
+                                    const steps = Math.max(1, Math.round((fadeDur * 60)));
+                                    let i = 0;
+                                    const delta = (0.08 - start) / steps;
+                                    const iv = setInterval(() => {
+                                        try {
+                                            i++;
+                                            a.volume = Math.max(0, Math.min(1, start + delta * i));
+                                            if (i >= steps) clearInterval(iv);
+                                        } catch (ee) { clearInterval(iv); }
+                                    }, Math.max(10, Math.round((fadeDur * 1000) / steps)));
+                                } catch (ee) {}
+                            }
+                        }
+                    } catch (e) {}
                     let screenPopup = document.getElementById('screenPopup');
                     console.debug('[screenPopup] attempting to show popup, element=', !!screenPopup);
                     if (!screenPopup) {
@@ -1069,10 +1175,23 @@ setTimeout(() => {
         }
     };
 
-    // Only show TV indicator from last position
-    const tvIndicatorPositions = [
-        navigationPositions[navigationPositions.length - 1] // Last orb position [3.13, 0.7, 0.04]
-    ];
+    // Only allow TV interaction when the camera is at index 4 or 5 (if available).
+    // Build allowed-from positions list from navigationPositions[4] and [5] when present,
+    // otherwise fall back to the last navigation position.
+    const tvIndicatorPositions = [];
+    try {
+        if (Array.isArray(navigationPositions)) {
+            if (navigationPositions.length > 4 && Array.isArray(navigationPositions[4])) tvIndicatorPositions.push(navigationPositions[4]);
+            if (navigationPositions.length > 5 && Array.isArray(navigationPositions[5])) tvIndicatorPositions.push(navigationPositions[5]);
+            // If neither 4 nor 5 were available, fall back to the last position
+            if (tvIndicatorPositions.length === 0 && navigationPositions.length > 0) {
+                tvIndicatorPositions.push(navigationPositions[navigationPositions.length - 1]);
+            }
+        }
+    } catch (e) {
+        // fallback: last position
+        try { tvIndicatorPositions.push(navigationPositions[navigationPositions.length - 1]); } catch (e) {}
+    }
 
     cameraInteractiveManager = setupCameraInteractiveObjects(
         scene, 
@@ -1094,6 +1213,44 @@ setTimeout(() => {
         try {
             const idx = e && e.detail ? e.detail.index : null;
             const lastIndex = navigationPositions.length - 1;
+            // Control screen video audio: only allow TV/screen audio when at index 4 or 5
+            try {
+                const allowedAudioIndices = [];
+                if (navigationPositions.length > 4) allowedAudioIndices.push(4);
+                if (navigationPositions.length > 5) allowedAudioIndices.push(5);
+                if (typeof screenVideo !== 'undefined' && screenVideo) {
+                    if (allowedAudioIndices.includes(idx)) {
+                        // Determine target volume (quieter at 4 than 5)
+                        let targetVol = 0.5;
+                        if (idx === 4) targetVol = 0.25;
+                        else if (idx === 5) targetVol = 0.6;
+
+                        try {
+                            const prev = (typeof _lastScreenAudioIndex === 'number') ? _lastScreenAudioIndex : null;
+                            const isDirectionalFourFive = (prev === 4 && idx === 5) || (prev === 5 && idx === 4);
+                                    if (isDirectionalFourFive && typeof fadeScreenVideoTo === 'function') {
+                                        try { screenVideo.unmute(); } catch (e) {}
+                                        try { fadeScreenVideoTo(targetVol, 1.5); } catch (e) { try { screenVideo.setVolume(targetVol); } catch (ee) {} }
+                                    } else {
+                                        try { screenVideo.setVolume(targetVol); } catch (e) {}
+                                        try { screenVideo.unmute(); } catch (e) {}
+                                    }
+                        } catch (e) {
+                            try { screenVideo.setVolume((idx === 4) ? 0.25 : (idx === 5) ? 0.6 : 0.5); } catch (ee) {}
+                            try { screenVideo.unmute(); } catch (ee) {}
+                        }
+                    } else {
+                        try { screenVideo.pause(); } catch (e) {}
+                        try { screenVideo.mute(); } catch (e) {}
+                    }
+                }
+
+                // Track last audio index for directional fades and cancellations
+                try {
+                    if (allowedAudioIndices.includes(idx)) _lastScreenAudioIndex = idx;
+                    else _lastScreenAudioIndex = null;
+                } catch (e) {}
+            } catch (e) {}
             if (idx === lastIndex) {
                 if (!window.hasEnteredWoods) return;
                 if (window._hasUnlockedEnterCabin) return;

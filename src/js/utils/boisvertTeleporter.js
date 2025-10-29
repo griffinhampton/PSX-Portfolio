@@ -83,6 +83,313 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             // ignore errors showing the notice
         }
     }
+    // Ambient winter wind audio helpers
+    function ensureWinterWindAudio() {
+        try {
+            if (typeof window === 'undefined') return null;
+            if (window.__winterWindAudio) return window.__winterWindAudio;
+            const a = document.createElement('audio');
+            a.src = 'src/sounds/winter-wind-402331.ogg';
+            a.loop = true;
+            a.preload = 'auto';
+            a.style.display = 'none';
+            try { document.body.appendChild(a); } catch (e) {}
+            try { window.__audioRegistry = window.__audioRegistry || []; if (!window.__audioRegistry.includes(a)) window.__audioRegistry.push(a); } catch (e) {}
+            // sensible default volume (reduced 50% from prior)
+            try { a.volume = 0.175; } catch (e) {}
+            window.__winterWindAudio = a;
+            return a;
+        } catch (e) { return null; }
+    }
+
+    // Track last known winter-wind index so we can perform directional fades
+    let _lastWinterIndex = null;
+
+    // Fade the winter wind audio to a target volume over a duration (seconds)
+    function fadeWinterWindTo(targetVol, duration = 1.5) {
+        try {
+            const a = ensureWinterWindAudio();
+            if (!a) return;
+            // Use gsap to tween the audio.volume property where available
+            try {
+                if (typeof gsap === 'object' && typeof gsap.to === 'function') {
+                    gsap.to(a, { volume: Math.max(0, Math.min(1, targetVol)), duration, ease: 'linear' });
+                } else {
+                    // fallback to simple linear interval-based fade
+                    const start = typeof a.volume === 'number' ? a.volume : 0;
+                    const steps = Math.max(1, Math.round((duration * 60))); // ~60fps
+                    let i = 0;
+                    const delta = (targetVol - start) / steps;
+                    const iv = setInterval(() => {
+                        try {
+                            i++;
+                            const v = start + delta * i;
+                            a.volume = Math.max(0, Math.min(1, v));
+                            if (i >= steps) {
+                                clearInterval(iv);
+                            }
+                        } catch (e) { clearInterval(iv); }
+                    }, Math.max(10, Math.round((duration * 1000) / steps)));
+                }
+            } catch (e) {
+                try { a.volume = Math.max(0, Math.min(1, targetVol)); } catch (ee) {}
+            }
+        } catch (e) {}
+    }
+
+    function playWinterWind() {
+        try {
+            if (typeof window === 'undefined') return;
+            const a = ensureWinterWindAudio();
+            if (!a) return;
+            // Do not play if walk mode is active
+            if (walkModeActive) return;
+            try { a.play().catch(()=>{}); } catch (e) {}
+        } catch (e) {}
+    }
+
+    function pauseWinterWind() {
+        try {
+            if (typeof window === 'undefined') return;
+            const a = window.__winterWindAudio;
+            if (!a) return;
+            try { a.pause(); } catch (e) {}
+        } catch (e) {}
+    }
+
+    function setWinterWindVolume(v) {
+        try {
+            const a = ensureWinterWindAudio();
+            if (!a) return;
+            try { a.volume = Math.max(0, Math.min(1, v)); } catch (e) {}
+        } catch (e) {}
+    }
+
+    function adjustWinterWindForIndex(index) {
+        try {
+            // If in walk mode, winter wind should not play
+            if (walkModeActive) {
+                try { pauseWinterWind(); } catch (e) {}
+                return;
+            }
+            // Determine desired target volume
+            // TV position is the last base navigation index; mute winter-wind there
+            let targetVol = 0.6;
+            try {
+                const tvIndex = (Array.isArray(navigationPositions) && navigationPositions.length > 0) ? (navigationPositions.length - 1) : null;
+                if (tvIndex !== null && index === tvIndex) {
+                    targetVol = 0.0;
+                } else if (index === 5) {
+                    // interior/dampened index (quieter)
+                    targetVol = 0.02;
+                } else {
+                    targetVol = 0.175;
+                }
+            } catch (e) {
+                try { targetVol = (index === 5) ? 0.02 : 0.175; } catch (ee) { targetVol = 0.175; }
+            }
+
+            // If this is a transition between certain adjacent indices (including 4<->5 or tvIndex-1<->tvIndex), perform a smooth fade
+            try {
+                const prev = _lastWinterIndex;
+                const tvIndex = (Array.isArray(navigationPositions) && navigationPositions.length > 0) ? (navigationPositions.length - 1) : null;
+                const isDirectionalFade = (
+                    (prev === 4 && index === 5) || (prev === 5 && index === 4) ||
+                    (tvIndex !== null && ((prev === (tvIndex - 1) && index === tvIndex) || (prev === tvIndex && index === (tvIndex - 1))))
+                );
+                if (isDirectionalFade) {
+                    // match camera tween duration for a smooth UX
+                    fadeWinterWindTo(targetVol, 1.5);
+                    // If we're fading to complete silence (TV), pause after fade completes
+                    if (targetVol === 0) {
+                        try { setTimeout(() => { try { pauseWinterWind(); } catch (e) {} }, Math.round(1.5 * 1000) + 100); } catch (e) {}
+                    }
+                } else {
+                    // immediate set for other transitions
+                    setWinterWindVolume(targetVol);
+                    if (targetVol === 0) {
+                        try { pauseWinterWind(); } catch (e) {}
+                    }
+                }
+            } catch (e) {
+                try { setWinterWindVolume(targetVol); } catch (ee) {}
+                if (targetVol === 0) { try { pauseWinterWind(); } catch (e) {} }
+            }
+
+            try { playWinterWind(); } catch (e) {}
+
+            // remember last index for next transition
+            try { _lastWinterIndex = index; } catch (e) {}
+        } catch (e) {}
+    }
+    // Heartbeat audio for static / vignette overlay
+    let _heartbeatAudio = null;
+    // internal resume listener to attempt restart if the element becomes paused
+    let _heartbeatResumeListener = null;
+    // Keep track of other audio/video elements we paused so we can resume them
+    let _pausedAudioElements = [];
+
+    // Chase music audio (played while the player is being chased)
+    let _chaseAudio = null;
+
+    function ensureChaseAudio() {
+        try {
+            if (typeof window === 'undefined') return null;
+            if (window.__chaseAudio) return window.__chaseAudio;
+            const a = document.createElement('audio');
+            a.src = 'src/sounds/cool-chase.mp3';
+            a.loop = true;
+            a.preload = 'auto';
+            a.style.display = 'none';
+            a.crossOrigin = 'anonymous';
+            try { document.body.appendChild(a); } catch (e) {}
+            try { window.__audioRegistry = window.__audioRegistry || []; if (!window.__audioRegistry.includes(a)) window.__audioRegistry.push(a); } catch (e) {}
+            window.__chaseAudio = a;
+            _chaseAudio = a;
+            return a;
+        } catch (e) { return null; }
+    }
+
+    function startChaseAudio() {
+        try {
+            const a = ensureChaseAudio();
+            if (!a) return;
+            // play at full master volume now
+            try { a.volume = Math.max(0, Math.min(1, _getPreferredVolume() * 1.0)); } catch (e) {}
+            // Pause heartbeat while chase is active
+            try { stopHeartbeat(); } catch (e) {}
+            try { a.play().catch(()=>{}); } catch (e) {}
+        } catch (e) {}
+    }
+
+    function stopChaseAudio() {
+        try {
+            const a = window.__chaseAudio || _chaseAudio;
+            if (!a) return;
+            try { a.pause(); } catch (e) {}
+            // When chase ends, resume heartbeat if the vignette/noise overlay is active
+            try { if (_noiseEnabled) startHeartbeat(); } catch (e) {}
+        } catch (e) {}
+    }
+
+    function ensureHeartbeatAudio() {
+        try {
+            if (typeof window === 'undefined') return null;
+            if (window.__heartbeatAudio) return window.__heartbeatAudio;
+            const a = document.createElement('audio');
+            a.src = 'src/sounds/heartbeat-01-brvhrtz-225058.mp3';
+            a.loop = true;
+            a.preload = 'auto';
+            a.style.display = 'none';
+            a.crossOrigin = 'anonymous';
+            // Default playbackRate (can be overridden by window.__heartbeatPlaybackRate)
+            try { a.playbackRate = (typeof window !== 'undefined' && typeof window.__heartbeatPlaybackRate === 'number') ? window.__heartbeatPlaybackRate : 1.3; } catch (e) {}
+            try { document.body.appendChild(a); } catch (e) {}
+            try { window.__audioRegistry = window.__audioRegistry || []; if (!window.__audioRegistry.includes(a)) window.__audioRegistry.push(a); } catch (e) {}
+            window.__heartbeatAudio = a;
+            _heartbeatAudio = a;
+            return a;
+        } catch (e) { return null; }
+    }
+
+    function startHeartbeat() {
+        try {
+            const a = ensureHeartbeatAudio();
+            if (!a) return;
+            // Respect master volume UI if present
+            // Increase default multiplier so heartbeat is louder by default
+            try { a.volume = Math.max(0, Math.min(1, _getPreferredVolume() * 0.9)); } catch (e) {}
+            // Ensure playbackRate is applied at start in case it was changed at runtime
+            try { a.playbackRate = (typeof window !== 'undefined' && typeof window.__heartbeatPlaybackRate === 'number') ? window.__heartbeatPlaybackRate : 1.3; } catch (e) {}
+            try {
+                // Ensure element is ready to play: unmute and make sure loop is set
+                try { a.muted = false; } catch (e) {}
+                try { a.loop = true; } catch (e) {}
+                // Attempt a short reset so repeated starts behave consistently
+                try { a.currentTime = 0; } catch (e) {}
+
+                const playAttempt = a.play && a.play();
+                if (playAttempt && typeof playAttempt.then === 'function') {
+                    playAttempt.catch(() => {
+                        // Some browsers may reject play() if no recent gesture; retry shortly
+                        try { setTimeout(() => { try { a.play().catch(()=>{}); } catch(e){} }, 120); } catch(e){}
+                    });
+                }
+            } catch (e) {}
+
+            // Attach a lightweight pause->resume helper so transient pauses don't
+            // permanently silence the heartbeat while the noise overlay is expected
+            // to be active. This helps in cases where other code briefly pauses
+            // or mutes the element.
+            try {
+                if (!_heartbeatResumeListener) {
+                    _heartbeatResumeListener = function() {
+                        try {
+                            // Only attempt resume when the noise overlay expects heartbeat
+                            if (_noiseEnabled && !(update && update._chaseActive)) {
+                                try { a.play().catch(()=>{}); } catch (e) {}
+                            }
+                        } catch (e) {}
+                    };
+                    try { a.addEventListener && a.addEventListener('pause', _heartbeatResumeListener); } catch (e) {}
+                }
+            } catch (e) {}
+        } catch (e) {}
+    }
+
+    function stopHeartbeat() {
+        try {
+            const a = window.__heartbeatAudio || _heartbeatAudio;
+            if (!a) return;
+            try { a.pause(); } catch (e) {}
+            try {
+                if (_heartbeatResumeListener) {
+                    try { a.removeEventListener && a.removeEventListener('pause', _heartbeatResumeListener); } catch (e) {}
+                    _heartbeatResumeListener = null;
+                }
+            } catch (e) {}
+        } catch (e) {}
+    }
+
+    // Pause all other audio/video elements (except heartbeat) and remember which were playing
+    function pauseAllOtherAudio() {
+        try {
+            _pausedAudioElements = [];
+            if (typeof window === 'undefined') return;
+            const registry = Array.isArray(window.__audioRegistry) ? window.__audioRegistry.slice() : [];
+            const domMedias = [];
+            try { domMedias.push(...Array.from(document.querySelectorAll('audio,video'))); } catch (e) {}
+            const candidates = registry.concat(domMedias);
+            for (const el of candidates) {
+                try {
+                    if (!el) continue;
+                    // skip the heartbeat audio itself
+                    if (el === window.__heartbeatAudio || el === _heartbeatAudio) continue;
+                    // also skip the chase audio so it can play even when vignette/static is active
+                    if (el === window.__chaseAudio || el === _chaseAudio) continue;
+                    // Only pause elements that are currently playing
+                    if (typeof el.paused === 'boolean' && !el.paused) {
+                        try { el.pause(); } catch (e) {}
+                        _pausedAudioElements.push(el);
+                    }
+                } catch (e) {}
+            }
+        } catch (e) {}
+    }
+
+    // Resume any audio/video we paused previously
+    function resumePausedAudio() {
+        try {
+            if (!Array.isArray(_pausedAudioElements)) return;
+            for (const el of _pausedAudioElements) {
+                try {
+                    if (!el) continue;
+                    try { el.play().catch(()=>{}); } catch (e) {}
+                } catch (e) {}
+            }
+        } catch (e) {}
+        _pausedAudioElements = [];
+    }
     // Collision/walk helpers and overlay state (defaults)
     let walkCollisionWalls = null;
     const walkRaycaster = new THREE.Raycaster();
@@ -220,6 +527,9 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     // Lazy audio elements for win/death sounds
     let _winAudio = null;
     let _deathAudio = null;
+    // Footsteps audio element and walking state
+    let _footstepsAudio = null;
+    let _isWalking = false;
 
     function _getPreferredVolume() {
         try {
@@ -256,6 +566,56 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             _deathAudio.volume = _getPreferredVolume();
             try { _deathAudio.currentTime = 0; } catch (e) {}
             _deathAudio.play().catch(e => {});
+        } catch (e) {}
+    }
+
+    // Footsteps helpers - used while in walk mode (backrooms)
+    function ensureFootstepsAudio() {
+        try {
+            if (typeof window === 'undefined') return null;
+            // Use a distinct global for backrooms footsteps so it doesn't clash
+            // with the navigation footsteps used elsewhere (cameraControls)
+            if (window.__backroomsFootstepsAudio) return window.__backroomsFootstepsAudio;
+            const a = document.createElement('audio');
+            a.src = 'src/sounds/foot-steps-on-carpet-70604.ogg';
+            a.loop = true;
+            a.preload = 'auto';
+            a.style.display = 'none';
+            try { document.body.appendChild(a); } catch (e) {}
+            try { window.__audioRegistry = window.__audioRegistry || []; if (!window.__audioRegistry.includes(a)) window.__audioRegistry.push(a); } catch (e) {}
+            // sensible default volume (scaled by master volume when playing) - increased to be louder
+            try { a.volume = 0.25; } catch (e) {}
+            // Slightly lower playbackRate to emulate muffled/thin-snow footsteps
+            try { a.playbackRate = 0.95; } catch (e) {}
+            window.__backroomsFootstepsAudio = a;
+            _footstepsAudio = a;
+            return a;
+        } catch (e) { return null; }
+    }
+
+    function startFootsteps() {
+        try {
+            if (typeof window === 'undefined') return;
+            const a = ensureFootstepsAudio();
+            if (!a) return;
+            try {
+                const master = (typeof window.__masterVolume === 'number') ? window.__masterVolume : 1.0;
+                // thin snow = louder footsteps (runtime scale)
+                a.volume = Math.max(0, Math.min(1, master * 0.25));
+            } catch (e) {}
+            try { a.play().catch(()=>{}); } catch (e) {}
+            _isWalking = true;
+        } catch (e) {}
+    }
+
+    function stopFootsteps() {
+        try {
+            if (typeof window === 'undefined') return;
+            const a = (window.__backroomsFootstepsAudio || window.__footstepsAudio) || _footstepsAudio;
+            if (!a) return;
+            try { a.pause(); } catch (e) {}
+            // do not reset currentTime so resume feels natural
+            _isWalking = false;
         } catch (e) {}
     }
 
@@ -361,8 +721,9 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             } catch (e) {}
 
             // stop further chase behavior
-            try { update._chaseMoveDir = null; } catch (e) {}
-            try { update._chaseActive = false; } catch (e) {}
+                try { update._chaseMoveDir = null; } catch (e) {}
+                try { update._chaseActive = false; } catch (e) {}
+                try { stopChaseAudio(); } catch (e) {}
             try { restoreBackroomsLights(); } catch (e) {}
         } catch (e) {
             // swallow
@@ -631,6 +992,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
         if (!_noiseCanvas || !_noiseCtx) return;
         _noiseEnabled = true;
         _noiseLast = 0;
+        try { startHeartbeat(); } catch (e) {}
 
         function frame(t) {
             if (!_noiseEnabled) return;
@@ -659,6 +1021,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
 
     function stopNoiseLoop() {
         _noiseEnabled = false;
+        try { stopHeartbeat(); } catch (e) {}
         if (_noiseRAF) {
             try {
                 cancelAnimationFrame(_noiseRAF);
@@ -1120,6 +1483,8 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
         try {
             ensureOverlay();
             if (_boisvertOverlay) _boisvertOverlay.style.opacity = '1';
+            // Pause all other audio/video so the overlay heartbeat/noise is isolated
+            try { pauseAllOtherAudio(); } catch (e) {}
             // Do not reset _countdownCompleted here — we only want the countdown
             // to restart after an explicit win or loss. Starting the noise loop
             // and countdown will respect the existing _countdownCompleted flag.
@@ -1133,6 +1498,8 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             if (_boisvertOverlay) _boisvertOverlay.style.opacity = '0';
             stopNoiseLoop();
             stopChaseMessageCountdown();
+            // Resume any audio/video we paused when the overlay was shown
+            try { resumePausedAudio(); } catch (e) {}
         } catch (e) {}
     }
 
@@ -1524,6 +1891,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                         // stop chase activity and movement
                         if (typeof update === 'function' || typeof update === 'object') {
                             try { update._chaseActive = false; } catch (e) {}
+                            try { stopChaseAudio(); } catch (e) {}
                             try { update._chaseMoveDir = null; } catch (e) {}
                             try { update._losePendingAt = null; } catch (e) {}
                         }
@@ -1604,7 +1972,8 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
 
     function startChaseMessageCountdown() {
         try {
-            lookAtBoisvert(); 
+            // Look at Boisvert immediately when the countdown starts
+            try { lookAtBoisvert(); } catch (e) {}
             ensureChaseMessage();
             if (!_chaseMsgEl) return;
             
@@ -1649,11 +2018,10 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                                 window.achievements.unlock('game_start');
                             }
                             try {
-                                if (typeof update === 'function') update._chaseActive = true;
+                            if (typeof update === 'function') { update._chaseActive = true; try { startChaseAudio(); } catch (e) {} }
                             } catch(e) {}
                             try { setBackroomsLightsRed(); } catch (e) {}
-                            // Make the player look at Boisvert when the chase/countdown completes
-                            try { lookAtBoisvert(); } catch (e) {}
+                            // (lookAtBoisvert already called when countdown started)
                             // show game intro and items list when chase starts
                             try { showGameIntro(); } catch (e) {}
                             try { showItemsList(); } catch (e) {}
@@ -1696,11 +2064,27 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                 const d = ev.detail || {};
                 analogMove.x = (typeof d.deltaX === 'number') ? -d.deltaX : 0;
                 analogMove.z = (typeof d.deltaY === 'number') ? d.deltaY : 0;
+                // Try to unlock audio playback on the first direct user interaction
+                // without actually starting footsteps here. This helps browsers
+                // that require a user gesture to allow audio.play() later in
+                // the update() loop. We play then immediately pause to unlock.
+                try {
+                    const a = ensureFootstepsAudio();
+                    if (a) {
+                        try {
+                            const p = a.play && a.play();
+                            if (p && typeof p.then === 'function') {
+                                p.then(() => { try { a.pause(); } catch (e) {} }).catch(()=>{});
+                            }
+                        } catch (e) {}
+                    }
+                } catch (e) {}
             };
 
             const onStop = () => {
                 analogMove.x = 0;
                 analogMove.z = 0;
+                try { stopFootsteps(); } catch (e) {}
             };
 
             movementPad.padElement.addEventListener('move', onMove);
@@ -1967,6 +2351,77 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
         // Show the WASD hint each time walk mode is enabled (desktop only)
         try { showWASDNotice(); } catch (e) {}
 
+        // Ensure all non-walk-mode sounds are stopped when entering walk mode.
+        try {
+            // Pause/mute all registered audio/video elements to silence UI and screen video
+            try {
+                if (typeof window !== 'undefined' && Array.isArray(window.__audioRegistry)) {
+                        // track elements we muted so we can restore them when leaving walk mode
+                        window.__walkModeMutedElements = window.__walkModeMutedElements || [];
+                        window.__audioRegistry.forEach(el => {
+                            try {
+                                if (!el) return;
+                                // Don't touch backrooms audio (we'll create/play it below)
+                                const src = (el.src || el.currentSrc || '').toString().toLowerCase();
+                                if (src && src.includes('thebackrooms')) return;
+                                // record previous state
+                                try {
+                                    window.__walkModeMutedElements.push({ el, wasPaused: !!el.paused, wasMuted: !!el.muted });
+                                } catch (ee) {}
+                                try { if (typeof el.pause === 'function') el.pause(); } catch(e) {}
+                                try { el.muted = true; } catch(e) {}
+                            } catch(e) {}
+                        });
+                    }
+            } catch (e) {}
+            // Also pause any DOM <video> elements present (screen video controller may not be registered yet)
+            try {
+                const vids = Array.from(document.querySelectorAll('video'));
+                vids.forEach(v => {
+                    try {
+                        if (!v) return;
+                        const s = (v.src || v.currentSrc || '').toLowerCase();
+                        if (s && s.includes('thebackrooms')) return; // leave backrooms if already present
+                        try {
+                            window.__walkModeMutedElements = window.__walkModeMutedElements || [];
+                            window.__walkModeMutedElements.push({ el: v, wasPaused: !!v.paused, wasMuted: !!v.muted });
+                        } catch (ee) {}
+                        try { v.pause(); } catch (e) {}
+                        try { v.muted = true; } catch (e) {}
+                    } catch(e) {}
+                });
+            } catch(e) {}
+        } catch (e) {}
+
+        // Start ambient backrooms audio while in walk mode.
+        try {
+            // Ensure winter wind is paused when entering walk mode
+            try { pauseWinterWind(); } catch (e) {}
+            // Create a single global audio element if not present
+            if (typeof window !== 'undefined') {
+                try {
+                    if (!window.__backroomsAudio) {
+                        const a = document.createElement('audio');
+                        a.src = 'src/sounds/TheBackrooms.ogg';
+                        a.loop = true;
+                        a.preload = 'auto';
+                        a.style.display = 'none';
+                        try { document.body.appendChild(a); } catch (e) {}
+                        // Register with global registry so master volume controls can affect it
+                        try { window.__audioRegistry = window.__audioRegistry || []; if (!window.__audioRegistry.includes(a)) window.__audioRegistry.push(a); } catch (e) {}
+                        window.__backroomsAudio = a;
+                    }
+                    // Apply master volume if present, but make backrooms audio quieter (half loudness)
+                    try {
+                        const master = (typeof window.__masterVolume === 'number') ? window.__masterVolume : 1.0;
+                        if (window.__backroomsAudio) window.__backroomsAudio.volume = Math.max(0, Math.min(1, master * 0.5));
+                    } catch (e) {}
+                    // Attempt to play (may be blocked until user gesture)
+                    try { window.__backroomsAudio.play().catch(()=>{}); } catch (e) {}
+                } catch (e) {}
+            }
+        } catch (e) {}
+
         enableWalkMode._cleanup = () => {
             window.removeEventListener('keydown', onKeyDown);
             window.removeEventListener('keyup', onKeyUp);
@@ -1989,6 +2444,19 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                     tableCollisionProxies = [];
                 }
             } catch (e) {}
+            // Restore any audio/video elements we muted when entering walk mode
+            try {
+                const list = (typeof window !== 'undefined' && Array.isArray(window.__walkModeMutedElements)) ? window.__walkModeMutedElements.slice() : [];
+                for (const rec of list) {
+                    try {
+                        if (!rec || !rec.el) continue;
+                        try { rec.el.muted = !!rec.wasMuted; } catch (e) {}
+                        // resume playback only if it was playing before
+                        try { if (!rec.wasPaused && typeof rec.el.play === 'function') rec.el.play().catch(()=>{}); } catch (e) {}
+                    } catch (e) {}
+                }
+            } catch (e) {}
+            try { window.__walkModeMutedElements = []; } catch (e) {}
             destroyMovementPad();
         };
     }
@@ -2009,6 +2477,17 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
         pendingWalkTarget = null;
         walkCollisionWalls = null;
         destroyMovementPad();
+        // Stop ambient backrooms audio when leaving walk mode
+        try {
+            // stop footsteps when leaving walk mode
+            try { stopFootsteps(); } catch (e) {}
+            if (typeof window !== 'undefined' && window.__backroomsAudio) {
+                try { window.__backroomsAudio.pause(); } catch (e) {}
+                try { window.__backroomsAudio.currentTime = 0; } catch (e) {}
+            }
+        } catch (e) {}
+        // Resume or adjust winter wind ambient when leaving walk mode
+        try { adjustWinterWindForIndex(currentTargetIndex); } catch (e) {}
     }
 
     // Start a safe navigation tween that kills any existing camera/orientation
@@ -2580,6 +3059,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             if (distance < POSITION_THRESHOLD && i !== currentTargetIndex) {
                 currentTargetIndex = i;
                 try { disableWalkMode(); } catch (e) {}
+                try { adjustWinterWindForIndex(currentTargetIndex); } catch (e) {}
                 teleportToPosition(navPos, i);
                 return;
             }
@@ -2607,6 +3087,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                     if (distance < POSITION_THRESHOLD && extendedIndex !== currentTargetIndex) {
                         currentTargetIndex = extendedIndex;
                         try { disableWalkMode(); } catch (e) {}
+                        try { adjustWinterWindForIndex(currentTargetIndex); } catch (e) {}
                         if (boisvertSpawnPositions && extendedIndex < boisvertSpawnPositions.length) {
                             teleportToPosition(addPos, extendedIndex);
                         }
@@ -2666,6 +3147,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                 if (nearestIndex !== -1 && nearestIndex !== currentTargetIndex && nearestDist <= RELAXED_THRESHOLD) {
                     currentTargetIndex = nearestIndex;
                     try { disableWalkMode(); } catch (e) {}
+                    try { adjustWinterWindForIndex(currentTargetIndex); } catch (e) {}
 
                     const targetPos = isAdditionalPos
                         ? (additionalCheck ? additionalCheck[nearestIndex - navigationPositions.length] : null)
@@ -2811,6 +3293,16 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             const useAnalog = Math.abs(analogMove.x) > 0.001 || Math.abs(analogMove.z) > 0.001;
             const moveZ = useAnalog ? (analogMove.z * analogScale) : (walkKeys.forward - walkKeys.back);
             const moveX = useAnalog ? (analogMove.x * analogScale) : (walkKeys.right - walkKeys.left);
+
+            // Start/stop footsteps when movement begins/ends (keyboard or pad)
+            try {
+                const isMovingNow = (Math.abs(moveZ) > 0.001 || Math.abs(moveX) > 0.001);
+                if (isMovingNow && !_isWalking) {
+                    try { startFootsteps(); } catch (e) {}
+                } else if (!isMovingNow && _isWalking) {
+                    try { stopFootsteps(); } catch (e) {}
+                }
+            } catch (e) {}
 
             if (moveZ !== 0 || moveX !== 0) {
                 const move = new THREE.Vector3();
@@ -3012,6 +3504,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     if (navigationPositions.length > 0) {
         teleportToPosition(navigationPositions[0], 0);
         currentTargetIndex = 0;
+        try { adjustWinterWindForIndex(currentTargetIndex); } catch (e) {}
         lastCameraPosition.copy(camera.position);
     }
 

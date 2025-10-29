@@ -159,6 +159,16 @@ export function setupCameraInteractiveObjects(scene, domElement, camera, cameraI
             }
 
             if (clicked && clicked.userData.isCameraInteractive) {
+                // Only allow camera-interactive clicks if the camera is at an allowed origin
+                // (allowedIndicatorPositions may be empty which means no restriction)
+                try {
+                    if (!isCameraAtAllowedPosition()) {
+                        // Not allowed from current camera position
+                        if (window.__DEBUG_SCREEN) console.debug('[cameraInteractive] click ignored - camera not at allowed origin position');
+                        return;
+                    }
+                } catch (e) {}
+
                 onObjectClick(clicked);
             }
         }

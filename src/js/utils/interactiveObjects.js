@@ -118,6 +118,13 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
                     }
                 } catch (e) {
                     try { 
+                    // Also ensure footsteps audio (if present) is paused when entering DLC/teleporting
+                    try {
+                        if (typeof window !== 'undefined') {
+                            try { if (window.__footstepsAudio) window.__footstepsAudio.pause(); } catch (e) {}
+                            try { if (window.__backroomsFootstepsAudio) window.__backroomsFootstepsAudio.pause(); } catch (e) {}
+                        }
+                    } catch (e) {}
                         if ('visible' in light) light.visible = true; 
                     } catch (ee) {}
                 }
@@ -1319,9 +1326,63 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
     let _dlcEnterListener = null;
     try {
         if (typeof window !== 'undefined') {
-            _teleportListener = () => { respawnFetchItems(); };
-            _lostListener = () => { respawnFetchItems(); };
-            _dlcEnterListener = () => { respawnFetchItems(); };
+            _teleportListener = () => {
+                respawnFetchItems();
+                try {
+                    // Hide common popups when teleporting to Boisvert start
+                    const ids = ['screenPopup','linkedinPopup','resumePopup','aboutPopup','griffinPopup','psxPortfolioPopup','resumeImagePopup','fnadWorldPopup','fnad2Popup','achievementsPopup','instructionsPopup'];
+                    ids.forEach(id=>{ try { const el = document.getElementById(id); if (el && el.style) el.style.display = 'none'; } catch(e){} });
+                    // Pause any videos
+                    try { const vids = Array.from(document.querySelectorAll('video')); vids.forEach(v=>{ try { v.pause(); v.muted = true; } catch(e){} }); } catch(e){}
+                } catch(e){}
+            };
+            _lostListener = () => {
+                respawnFetchItems();
+                try {
+                    const ids = ['screenPopup','linkedinPopup','resumePopup','aboutPopup','griffinPopup','psxPortfolioPopup','resumeImagePopup','fnadWorldPopup','fnad2Popup','achievementsPopup','instructionsPopup'];
+                    ids.forEach(id=>{ try { const el = document.getElementById(id); if (el && el.style) el.style.display = 'none'; } catch(e){} });
+                    try { const vids = Array.from(document.querySelectorAll('video')); vids.forEach(v=>{ try { v.pause(); v.muted = true; } catch(e){} }); } catch(e){}
+                } catch(e){}
+            };
+            _dlcEnterListener = () => {
+                // Respawn fetch items as before
+                respawnFetchItems();
+
+                // Also clear any popups and stop/pause the TV video so the UI doesn't remain visible
+                try {
+                    // List of common popup IDs to hide
+                    const popupIds = [
+                        'screenPopup', 'linkedinPopup', 'resumePopup', 'aboutPopup', 'griffinPopup',
+                        'psxPortfolioPopup', 'resumeImagePopup', 'fnadWorldPopup', 'fnad2Popup',
+                        'achievementsPopup', 'instructionsPopup'
+                    ];
+
+                    popupIds.forEach(id => {
+                        try {
+                            const el = document.getElementById(id);
+                            if (el && el.style) el.style.display = 'none';
+                        } catch (e) {}
+                    });
+
+                    // Try to stop any screen/video elements (NOLD.mp4) registered in audio registry or present in DOM
+                    try {
+                        const candidates = [];
+                        try { if (typeof window !== 'undefined' && Array.isArray(window.__audioRegistry)) candidates.push(...window.__audioRegistry); } catch (e) {}
+                        try { const vids = Array.from(document.querySelectorAll('video')); if (Array.isArray(vids)) candidates.push(...vids); } catch (e) {}
+
+                        candidates.forEach(v => {
+                            try {
+                                if (!v) return;
+                                const src = (v.src || v.currentSrc || '').toLowerCase();
+                                // Match the known screen video filename (fallback to pausing any hidden video if needed)
+                                if (src.includes('nold.mp4') || src.includes('nold') || src.endsWith('.mp4')) {
+                                    try { v.pause(); v.muted = true; v.currentTime = 0; } catch (e) {}
+                                }
+                            } catch (e) {}
+                        });
+                    } catch (e) {}
+                } catch (e) {}
+            };
             window.addEventListener('boisvert:teleportToStart', _teleportListener);
             window.addEventListener('boisvert:playerLost', _lostListener);
             window.addEventListener('boisvert:dlcAreaEntered', _dlcEnterListener);
