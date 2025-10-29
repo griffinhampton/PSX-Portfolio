@@ -8,6 +8,36 @@ let container = null; // panel container
 let toastContainer = null;
 let visibleToasts = new Set(); // track currently visible toast IDs to prevent duplicates
 let meta = { seenPopup: false, hasNew: false };
+// Achievement sound: attempt to play on unlock. Use a single Audio element
+// and register it with the global audio registry so mute/master volume
+// controls (if present) can affect it.
+let achievementAudio = null;
+
+function getAchievementAudio() {
+    try {
+        if (achievementAudio) return achievementAudio;
+        achievementAudio = new Audio('src/sounds/steam-achievement.mp3');
+        achievementAudio.preload = 'auto';
+        // If a global master volume is set, apply it
+        try {
+            if (typeof window !== 'undefined' && typeof window.__masterVolume === 'number') {
+                achievementAudio.volume = Math.max(0, Math.min(1, window.__masterVolume));
+            }
+        } catch (e) {}
+        // Register with global audio registry so UI mute controls can affect it
+        try {
+            if (typeof window !== 'undefined') {
+                window.__audioRegistry = window.__audioRegistry || [];
+                if (!window.__audioRegistry.includes(achievementAudio)) window.__audioRegistry.push(achievementAudio);
+            }
+        } catch (e) {}
+        return achievementAudio;
+    } catch (e) {
+        // If audio cannot be created, swallow errors — achievements still work
+        achievementAudio = null;
+        return null;
+    }
+}
 
 function loadMeta() {
     try {
@@ -406,6 +436,16 @@ function unlockAchievement(id) {
     // render and toast
     renderPanel();
     try { showToast(ach); } catch (e) { /* swallow */ }
+    // Try to play achievement sound. Browsers may block playback until a
+    // user gesture; swallow any promise rejection so it doesn't break flow.
+    try {
+        const a = getAchievementAudio();
+        if (a) {
+            try { a.currentTime = 0; } catch (e) {}
+            const p = a.play();
+            if (p && typeof p.then === 'function') p.catch(() => {});
+        }
+    } catch (e) {}
     // mark meta that there's a new achievement available
     try {
         meta.hasNew = true;
