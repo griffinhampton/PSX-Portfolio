@@ -14,12 +14,14 @@ import { setupScreenVideoTexture } from "./src/js/utils/screenVideoTexture.js";
 import { initializeCursorManager } from "./src/js/utils/cursorManager.js";
 // mute UI removed: audioController UI setup/imports cleaned from index.js
 import { setupNavbar } from "./src/js/utils/navbar.js";
-import { initLoadingScreen } from "./src/js/utils/loadingScreen.js";
+import { initLoadingScreen, startPriorityPreloads } from "./src/js/utils/loadingScreen.js";
 import { setupBoisvertTeleporter } from "./src/js/utils/boisvertTeleporter.js";
 import { initAchievements, registerDefaultAchievements } from "./src/js/utils/achievements.js";
 
 // Initialize loading screen
 const loadingController = initLoadingScreen();
+// Start non-blocking priority preloads (video, etc.) while loading UI is visible
+try { startPriorityPreloads(); } catch (e) {}
 
 const qualitySettings = getQualitySettings();
 

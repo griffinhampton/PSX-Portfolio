@@ -1268,8 +1268,8 @@ export function setupInteractiveObjects(scene, domElement, camera, interactiveCo
 
     registerInteractiveManager(() => interactiveObjects);
 
+    // Use Pointer Events only to avoid duplicate firing on mobile (touchstart + pointerdown)
     domElement.addEventListener('pointerdown', onPointerDown);
-    domElement.addEventListener('touchstart', onPointerDown, { passive: false });
 
     setupPopupCloseButtons();
 

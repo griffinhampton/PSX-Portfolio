@@ -98,3 +98,37 @@ export function setupScreenVideoTexture(screenObject, videoSrc) {
         }
     };
 }
+
+// Preload a video element without attaching it to a mesh. Useful to start
+// network download during the loading screen so the video is ready when the
+// player later opens the screen. Returns the HTMLVideoElement (or null).
+export function preloadVideo(videoSrc) {
+    try {
+        if (typeof window === 'undefined') return null;
+        window.__preloadedVideos = window.__preloadedVideos || {};
+        if (window.__preloadedVideos[videoSrc]) return window.__preloadedVideos[videoSrc];
+
+        const video = document.createElement('video');
+        video.src = videoSrc;
+        video.crossOrigin = 'anonymous';
+        video.loop = true;
+        // Default to muted until audio controller sets proper state
+        video.muted = true;
+        video.playsInline = true;
+        // Hint the browser to download the resource early
+        video.preload = 'auto';
+        video.style.display = 'none';
+        try { document.body.appendChild(video); } catch (e) {}
+
+        // Register with audio controller if available
+        try { registerVideo(video); } catch (e) {}
+
+        // Kick off loading
+        try { video.load(); } catch (e) {}
+
+        window.__preloadedVideos[videoSrc] = video;
+        return video;
+    } catch (e) {
+        return null;
+    }
+}

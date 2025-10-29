@@ -120,6 +120,24 @@ export function initLoadingScreen() {
     };
 }
 
+// Kick off preloads that should start during the loading screen.
+export function startPriorityPreloads() {
+    // Preload the main screen video in the background so it is available
+    // by the time the player navigates to the screen. This is non-blocking
+    // and will not delay the loading screen completion.
+    try {
+        // Dynamic import to avoid circular deps at module load time
+        import('./screenVideoTexture.js').then(mod => {
+            try {
+                if (mod && typeof mod.preloadVideo === 'function') {
+                    // Path must match the one used when wiring the screen texture
+                    mod.preloadVideo('src/videos/NOLD.mp4');
+                }
+            } catch (e) {}
+        }).catch(() => {});
+    } catch (e) {}
+}
+
 /**
  * Hook into Three.js loading manager to show real progress
  */
