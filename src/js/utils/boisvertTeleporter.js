@@ -2071,10 +2071,15 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                 try {
                     const a = ensureFootstepsAudio();
                     if (a) {
+                        // Only attempt unlock once per session — repeated play/pause
+                        // calls on every move create a lot of promise work on mobile.
                         try {
-                            const p = a.play && a.play();
-                            if (p && typeof p.then === 'function') {
-                                p.then(() => { try { a.pause(); } catch (e) {} }).catch(()=>{});
+                            if (!window.__movementPadAudioUnlocked) {
+                                window.__movementPadAudioUnlocked = true;
+                                const p = a.play && a.play();
+                                if (p && typeof p.then === 'function') {
+                                    p.then(() => { try { a.pause(); } catch (e) {} }).catch(()=>{});
+                                }
                             }
                         } catch (e) {}
                     }

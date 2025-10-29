@@ -19,6 +19,9 @@ class MovementPad {
     this.regionData = {};
     this.handleData = {};
     this.eventRepeatTimeout = null;
+    // rAF batching for pointer updates
+    this._pendingPos = null;
+    this._rafId = null;
     // Track active touch identifier so multiple pads can be used simultaneously
     this.activePointerId = null;
     // Separate mouse flag for desktop interactions
@@ -57,7 +60,7 @@ class MovementPad {
         this._onRegionMouseDown = (event) => {
             this.mouseDown = true;
             this.handle.style.opacity = 1.0;
-            this.update(event.pageX, event.pageY);
+            this._queueUpdate(event.pageX, event.pageY);
         };
         this.region.addEventListener('mousedown', this._onRegionMouseDown);
 
@@ -69,7 +72,7 @@ class MovementPad {
 
         this._onDocumentMouseMove = (event) => {
             if (!this.mouseDown) return;
-            this.update(event.pageX, event.pageY);
+            this._queueUpdate(event.pageX, event.pageY);
         };
         document.addEventListener('mousemove', this._onDocumentMouseMove);
 
@@ -80,7 +83,7 @@ class MovementPad {
             this.activePointerId = t.identifier;
             this.handle.style.opacity = 1.0;
             if (event.cancelable) event.preventDefault();
-            this.update(t.pageX, t.pageY);
+            this._queueUpdate(t.pageX, t.pageY);
         };
         this.region.addEventListener('touchstart', this._onRegionTouchStart, { passive: false });
 
@@ -109,7 +112,7 @@ class MovementPad {
             }
             if (!touch) return;
             if (event.cancelable) event.preventDefault();
-            this.update(touch.pageX, touch.pageY);
+            this._queueUpdate(touch.pageX, touch.pageY);
         };
         document.addEventListener('touchmove', this._onDocumentTouchMove, { passive: false });
 
@@ -157,9 +160,11 @@ class MovementPad {
         newTop = Math.round(newTop * 10) / 10;
         newLeft = Math.round(newLeft * 10) / 10;
 
-    // Place handle using local coordinates relative to region
-    this.handle.style.top = (newTop - this.handleData.radius) + 'px';
-    this.handle.style.left = (newLeft - this.handleData.radius) + 'px';
+    // Place handle using left/top so the handle remains centered consistently
+    const leftPos = Math.round((newLeft - this.handleData.radius) * 10) / 10;
+    const topPos = Math.round((newTop - this.handleData.radius) * 10) / 10;
+    this.handle.style.left = leftPos + 'px';
+    this.handle.style.top = topPos + 'px';
 
     // Compute deltas in local region coordinates (center - handle)
     let deltaX = this.regionData.centerX - newLeft;
@@ -175,6 +180,19 @@ class MovementPad {
         this.sendEvent(deltaX, deltaY, 0);
     }
 
+    _queueUpdate(pageX, pageY) {
+        this._pendingPos = { x: pageX, y: pageY };
+        if (this._rafId) return;
+        this._rafId = requestAnimationFrame(() => {
+            try {
+                const p = this._pendingPos;
+                this._pendingPos = null;
+                this._rafId = null;
+                if (p) this.update(p.x, p.y);
+            } catch (e) {}
+        });
+    }
+
     sendEvent(dx, dy, middle) {
         if (this.eventRepeatTimeout) clearTimeout(this.eventRepeatTimeout);
 
@@ -185,9 +203,10 @@ class MovementPad {
             return;
         }
 
+        // Throttle repeat events to ~25Hz to reduce JS/event overhead on mobile
         this.eventRepeatTimeout = setTimeout(() => {
             this.sendEvent(dx, dy, middle);
-        }, 5);
+        }, 40);
 
         const moveEvent = new CustomEvent('move', {
             bubbles: false,
@@ -200,8 +219,10 @@ class MovementPad {
         // Center handle inside region (local coords)
         const cx = (this.regionData.width || this.region.offsetWidth) / 2;
         const cy = (this.regionData.height || this.region.offsetHeight) / 2;
-        this.handle.style.top = (cy - (this.handleData.radius || (this.handle.offsetHeight / 2))) + 'px';
-        this.handle.style.left = (cx - (this.handleData.radius || (this.handle.offsetWidth / 2))) + 'px';
+    const leftPos = Math.round((cx - (this.handleData.radius || (this.handle.offsetWidth / 2))) * 10) / 10;
+    const topPos = Math.round((cy - (this.handleData.radius || (this.handle.offsetHeight / 2))) * 10) / 10;
+    this.handle.style.left = leftPos + 'px';
+    this.handle.style.top = topPos + 'px';
         this.handle.style.opacity = 0.1;
     }
 
@@ -222,6 +243,7 @@ class MovementPad {
 
         // Clear any repeating timeout
         try { if (this.eventRepeatTimeout) clearTimeout(this.eventRepeatTimeout); } catch (e) {}
+    try { if (this._rafId) cancelAnimationFrame(this._rafId); } catch (e) {}
 
         this.padElement = null;
     }
