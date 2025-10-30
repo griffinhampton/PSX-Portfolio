@@ -357,6 +357,7 @@ export function setupOrbNavigation(scene, camera, domElement, positions = [], fl
                         const fa = document.createElement('audio');
                         fa.src = 'src/sounds/footsteps-in-thin-snow-46199.mp3';
                         fa.loop = true; // loop so continuous footsteps play while navigating
+                        fa.volume = .4;
                         fa.preload = 'auto';
                         fa.style.display = 'none';
                         try { document.body.appendChild(fa); } catch (e) {}
