@@ -105,6 +105,67 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
     // Track last known winter-wind index so we can perform directional fades
     let _lastWinterIndex = null;
 
+    // Helper to hide/show navigation UI while a chase is active.
+    // This will hide the top navbar and the bottom-right corner controls if present.
+    function setNavButtonsHidden(hidden) {
+        try {
+            const corner = document.getElementById('cornerControls');
+            if (corner) corner.style.display = hidden ? 'none' : '';
+        } catch (e) {}
+        try {
+            const navs = document.querySelectorAll('.navbar, .nav-button');
+            if (navs && navs.length) {
+                navs.forEach((el) => {
+                    try { el.style.display = hidden ? 'none' : ''; } catch (e) {}
+                });
+            }
+        } catch (e) {}
+    }
+
+    // Developer helper: hide/show ALL UI buttons (including settings, achievements, etc.)
+    // Exposed as window.__devHideAllUI(bool) and window.toggleDevUI()
+    function setAllUIHidden(hidden) {
+        try {
+            const selectors = [
+                '#cornerControls',
+                '.corner-controls',
+                '.navbar',
+                '.nav-button',
+                '.control-button',
+                '.more-item',
+                '.mute-button',
+                '.button',
+                '#achievementsToggle',
+                '#navDLC',
+                '#navBackToStart',
+                '#navToCabin',
+                '#moreSettings'
+            ];
+            const nodes = document.querySelectorAll(selectors.join(','));
+            if (nodes && nodes.length) {
+                nodes.forEach((el) => {
+                    try { el.style.display = hidden ? 'none' : ''; } catch (e) {}
+                });
+            }
+        } catch (e) {}
+    }
+
+    // Expose dev commands on window
+    try {
+        if (typeof window !== 'undefined') {
+            window.__devHideAllUI = function(hide = true) {
+                try { setAllUIHidden(!!hide); } catch (e) {}
+                try { window.__devUIHiddenState = !!hide; } catch (e) {}
+            };
+            window.toggleDevUI = function() {
+                try {
+                    const cur = !!(window.__devUIHiddenState);
+                    window.__devHideAllUI(!cur);
+                } catch (e) {}
+            };
+        }
+    } catch (e) {}
+
     // Fade the winter wind audio to a target volume over a duration (seconds)
     function fadeWinterWindTo(targetVol, duration = 1.5) {
         try {
@@ -156,6 +217,49 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
             try { a.pause(); } catch (e) {}
         } catch (e) {}
     }
+
+    // Unlock audio on first user gesture to satisfy browser autoplay policies.
+    // This will attempt to play the winter-wind audio and any audios in the
+    // global `window.__audioRegistry` once the user interacts (pointer/touch/keydown).
+    function unlockAudioOnFirstGesture() {
+        try {
+            if (typeof window === 'undefined' || window.__audioUnlocked) return;
+
+            const attempt = function tryPlay() {
+                try {
+                    const a = ensureWinterWindAudio();
+                    if (a) {
+                        try { a.play().catch(()=>{}); } catch (e) {}
+                    }
+
+                    // Try to play any audios the app registered earlier
+                    try {
+                        if (window.__audioRegistry && Array.isArray(window.__audioRegistry)) {
+                            window.__audioRegistry.forEach((el) => {
+                                try { if (el && typeof el.play === 'function') el.play().catch(()=>{}); } catch (e) {}
+                            });
+                        }
+                    } catch (e) {}
+
+                    window.__audioUnlocked = true;
+                } catch (e) {}
+
+                // Remove listeners after first attempt
+                try { document.removeEventListener('pointerdown', tryPlay); } catch (e) {}
+                try { document.removeEventListener('touchstart', tryPlay); } catch (e) {}
+                try { document.removeEventListener('keydown', tryPlay); } catch (e) {}
+            };
+
+            // Use passive listeners where appropriate and set once: true semantics
+            try { document.addEventListener('pointerdown', attempt, { once: true, passive: true }); } catch (e) { document.addEventListener('pointerdown', attempt); }
+            try { document.addEventListener('touchstart', attempt, { once: true, passive: true }); } catch (e) { document.addEventListener('touchstart', attempt); }
+            try { document.addEventListener('keydown', attempt, { once: true, passive: true }); } catch (e) { document.addEventListener('keydown', attempt); }
+        } catch (e) {}
+    }
+
+    // Start listening for the first gesture right away so the audio unlock
+    // will occur before the user clicks an orb.
+    try { unlockAudioOnFirstGesture(); } catch (e) {}
 
     function setWinterWindVolume(v) {
         try {
@@ -720,10 +824,11 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                 }
             } catch (e) {}
 
-            // stop further chase behavior
+                // stop further chase behavior
                 try { update._chaseMoveDir = null; } catch (e) {}
                 try { update._chaseActive = false; } catch (e) {}
                 try { stopChaseAudio(); } catch (e) {}
+                try { setNavButtonsHidden(false); } catch (e) {}
             try { restoreBackroomsLights(); } catch (e) {}
         } catch (e) {
             // swallow
@@ -1894,6 +1999,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                             try { stopChaseAudio(); } catch (e) {}
                             try { update._chaseMoveDir = null; } catch (e) {}
                             try { update._losePendingAt = null; } catch (e) {}
+                            try { setNavButtonsHidden(false); } catch (e) {}
                         }
                         // stop any countdown visuals if running
                         try { stopChaseMessageCountdown(); } catch (e) {}
@@ -2020,6 +2126,7 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
                             try {
                             if (typeof update === 'function') { update._chaseActive = true; try { startChaseAudio(); } catch (e) {} }
                             } catch(e) {}
+                            try { setNavButtonsHidden(true); } catch (e) {}
                             try { setBackroomsLightsRed(); } catch (e) {}
                             // (lookAtBoisvert already called when countdown started)
                             // show game intro and items list when chase starts

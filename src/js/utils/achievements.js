@@ -490,7 +490,7 @@ function showDevPowerPrompt() {
         const msg = document.createElement('div');
         msg.style.fontSize = '18px';
         msg.style.marginBottom = '16px';
-        msg.innerText = "Congratulations — you've done everything in my portfolio, do you want dev powers?";
+        msg.innerText = "Congratulations — you've done everything in my portfolio, do you want dev powers? (Allows you to use left click to fly around the map, flying through walls and such)";
 
         const btnWrap = document.createElement('div');
         btnWrap.style.display = 'flex';
