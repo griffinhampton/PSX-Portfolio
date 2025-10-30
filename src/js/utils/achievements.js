@@ -351,27 +351,21 @@ export function initAchievements(list = []) {
     window.toggleAchievementsPanel = () => {
         ensureContainers();
         container.classList.toggle('hidden');
-        // Mark that user has seen the popup when they open it
         if (!meta.seenPopup && container.classList.contains('hidden') === false) {
             meta.seenPopup = true;
-            // clear hasNew when user opens panel
             meta.hasNew = false;
             saveMeta();
         }
         updateToggleIcon();
         renderPanel();
     };
-    // expose reset helper
     window.resetAchievements = resetAchievements;
     renderPanel();
-    // Ensure toggle reflects persisted meta state
     updateToggleIcon();
-    // Wire a click listener on the toggle button (if present) so clicking marks popup as seen
     try {
         const toggleBtn = document.querySelector('#achievementsToggle');
         if (toggleBtn) {
             toggleBtn.addEventListener('click', () => {
-                // user is interacting with the toggle — mark seen and clear new flag
                 if (!meta.seenPopup || meta.hasNew) {
                     meta.seenPopup = true;
                     meta.hasNew = false;
@@ -389,21 +383,18 @@ export function initAchievements(list = []) {
         unlock(id) {
             const ok = unlockAchievement(id);
             if (ok) {
-                // mark meta.hasNew so toggle indicates new achievement until user opens panel
                 meta.hasNew = true;
                 saveMeta();
                 updateToggleIcon();
             }
             return ok;
         },
-        // Force-show an achievement toast (does not change unlocked state)
         show(id) {
             const ach = achievementsMap.get(id);
             if (!ach) return false;
             try { showToast(ach); } catch (e) {}
             return true;
         },
-        // Public helper to mark that there's a new achievement (updates UI and persists)
         markHasNew() {
             try {
                 meta.hasNew = true;
@@ -419,7 +410,6 @@ export function initAchievements(list = []) {
         },
         reset: resetAchievements
     };
-    // Expose controller for debugging
     try { window.achievements = controller; } catch (e) {}
     return controller;
 }
@@ -433,11 +423,8 @@ function unlockAchievement(id) {
     if (unlockedSet.has(id)) return false;
     unlockedSet.add(id);
     saveUnlocked();
-    // render and toast
     renderPanel();
     try { showToast(ach); } catch (e) { /* swallow */ }
-    // Try to play achievement sound. Browsers may block playback until a
-    // user gesture; swallow any promise rejection so it doesn't break flow.
     try {
         const a = getAchievementAudio();
         if (a) {
@@ -446,7 +433,17 @@ function unlockAchievement(id) {
             if (p && typeof p.then === 'function') p.catch(() => {});
         }
     } catch (e) {}
-    // mark meta that there's a new achievement available
+    // If this was the collector achievement (all unlocked), prompt for dev powers
+    try {
+        if (id === 'collected_all') {
+            const isMobile = (typeof navigator !== 'undefined') && (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
+            if (isMobile) {
+                try { showConfettiAndPlaySound(); } catch (e) {}
+            } else {
+                try { showDevPowerPrompt(); } catch (e) {}
+            }
+        }
+    } catch (e) {}
     try {
         meta.hasNew = true;
         saveMeta();
@@ -460,6 +457,225 @@ function unlockAchievement(id) {
     // should be granted (i.e. all other registered achievements are unlocked).
     try { checkCollectAllAchievement(); } catch (e) {}
     return true;
+}
+
+// Show a modal asking the user if they want "dev powers" (enables FlyControls).
+function showDevPowerPrompt() {
+    try {
+        // Avoid creating multiple prompts
+        if (document.getElementById('dev-powers-prompt')) return;
+
+        const wrap = document.createElement('div');
+        wrap.id = 'dev-powers-prompt';
+        wrap.style.position = 'fixed';
+        wrap.style.left = '0';
+        wrap.style.top = '0';
+        wrap.style.width = '100vw';
+        wrap.style.height = '100vh';
+        wrap.style.display = 'flex';
+        wrap.style.alignItems = 'center';
+        wrap.style.justifyContent = 'center';
+        wrap.style.zIndex = '100000';
+        wrap.style.background = 'rgba(0,0,0,0.6)';
+
+        const box = document.createElement('div');
+        box.style.background = '#111';
+        box.style.color = '#fff';
+        box.style.padding = '20px';
+        box.style.borderRadius = '10px';
+        box.style.maxWidth = '560px';
+        box.style.boxShadow = '0 10px 40px rgba(0,0,0,0.6)';
+        box.style.textAlign = 'center';
+
+        const msg = document.createElement('div');
+        msg.style.fontSize = '18px';
+        msg.style.marginBottom = '16px';
+        msg.innerText = "Congratulations — you've done everything in my portfolio, do you want dev powers?";
+
+        const btnWrap = document.createElement('div');
+        btnWrap.style.display = 'flex';
+        btnWrap.style.justifyContent = 'center';
+        btnWrap.style.gap = '12px';
+
+        const yes = document.createElement('button');
+        yes.innerText = 'Yes';
+        yes.style.padding = '10px 16px';
+        yes.style.background = '#2e7d32';
+        yes.style.color = '#fff';
+        yes.style.border = '0';
+        yes.style.borderRadius = '6px';
+        yes.style.cursor = 'pointer';
+
+        const no = document.createElement('button');
+        no.innerText = 'No';
+        no.style.padding = '10px 16px';
+        no.style.background = '#b71c1c';
+        no.style.color = '#fff';
+        no.style.border = '0';
+        no.style.borderRadius = '6px';
+        no.style.cursor = 'pointer';
+
+        btnWrap.appendChild(yes);
+        btnWrap.appendChild(no);
+        box.appendChild(msg);
+        box.appendChild(btnWrap);
+        wrap.appendChild(box);
+
+        document.body.appendChild(wrap);
+
+        const cleanup = () => {
+            try { document.body.removeChild(wrap); } catch (e) {}
+        };
+
+        no.addEventListener('click', () => {
+            cleanup();
+        });
+
+        yes.addEventListener('click', () => {
+            // Enable FlyControls indefinitely
+            try { enableFlyControls().catch(() => {}); } catch (e) {}
+            cleanup();
+        });
+    } catch (e) {
+        // swallow errors so achievement flow is unaffected
+        console.warn('[achievements] failed to show dev powers prompt', e);
+    }
+}
+
+// Dynamically import FlyControls and attach it to the global controls shim.
+// Uses document canvas element as fallback for renderer.domElement. Creates
+// a simple clock object if THREE.Clock isn't available here.
+async function enableFlyControls() {
+    try {
+        // If controls shim isn't present, nothing to attach to
+        const controlsShim = window.controls;
+        if (!controlsShim) return;
+
+        // If already in fly mode, skip
+        if (controlsShim._mode === 'fly' && controlsShim._fly) return;
+
+        const mod = await import('https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/controls/FlyControls.js');
+        const FlyControls = mod && mod.FlyControls ? mod.FlyControls : null;
+        if (!FlyControls) return;
+
+        // Determine dom element for event listeners: prefer renderer canvas, otherwise first canvas
+        let dom = null;
+        try {
+            // try to find a renderer canvas appended to body
+            dom = document.querySelector('canvas') || document.body;
+        } catch (e) { dom = document.body; }
+
+        // Ensure we have a camera
+        const camera = window.camera;
+        if (!camera) return;
+
+        const fly = new FlyControls(camera, dom);
+        // sensible dev defaults
+        fly.movementSpeed = 4.0;
+        fly.rollSpeed = Math.PI / 6;
+        fly.dragToLook = false;
+        fly.autoForward = false;
+
+        // Simple clock replacement with getDelta() in seconds
+        const clock = {
+            _last: (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(),
+            getDelta() {
+                const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+                const dt = (now - this._last) / 1000;
+                this._last = now;
+                return dt;
+            }
+        };
+
+        // Attach to shim so existing animation loop will call update()
+        try {
+            controlsShim._fly = fly;
+            controlsShim._clock = clock;
+            controlsShim._mode = 'fly';
+            // Expose for debugging
+            window.flyControls = fly;
+            console.warn('[achievements] FlyControls enabled (dev powers)');
+        } catch (e) {
+            console.warn('[achievements] failed to attach FlyControls to controls shim', e);
+        }
+    } catch (e) {
+        console.warn('[achievements] enableFlyControls error', e);
+    }
+}
+
+// Show confetti falling from the top of the screen and play a single win sound.
+function showConfettiAndPlaySound() {
+    try {
+        if (document.getElementById('ach-confetti')) return;
+        const container = document.createElement('div');
+        container.id = 'ach-confetti';
+        container.style.position = 'fixed';
+        container.style.left = '0';
+        container.style.top = '0';
+        container.style.width = '100%';
+        container.style.height = '0';
+        container.style.pointerEvents = 'none';
+        container.style.overflow = 'visible';
+        container.style.zIndex = '100000';
+        document.body.appendChild(container);
+
+        const colors = ['#ff3b30','#ff9500','#ffcc00','#4cd964','#5ac8fa','#007aff','#5856d6','#ff2d55'];
+        const count = Math.max(18, Math.min(60, Math.round((window.innerWidth || 320) / 12)));
+        for (let i = 0; i < count; i++) {
+            const el = document.createElement('div');
+            const w = Math.floor(Math.random() * 10) + 6;
+            const h = Math.floor(Math.random() * 18) + 8;
+            el.style.width = w + 'px';
+            el.style.height = h + 'px';
+            el.style.background = colors[Math.floor(Math.random() * colors.length)];
+            el.style.position = 'fixed';
+            const startLeft = Math.random() * 100;
+            el.style.left = startLeft + 'vw';
+            el.style.top = '-10vh';
+            el.style.opacity = String(0.95 - Math.random() * 0.4);
+            el.style.borderRadius = (Math.random() > 0.6 ? '2px' : '50%');
+            el.style.transform = `rotate(${Math.random() * 360}deg)`;
+            el.style.willChange = 'transform, top, left, opacity';
+            el.style.transition = `transform ${3 + Math.random()*1.5}s linear, top ${3 + Math.random()*1.5}s linear, left ${3 + Math.random()*1.5}s linear, opacity 0.6s ease`;
+            container.appendChild(el);
+
+            // stagger animation
+            setTimeout(() => {
+                const endLeftOffset = (Math.random() - 0.5) * 20; // vw offset
+                el.style.top = (100 + Math.random() * 10) + 'vh';
+                el.style.left = `calc(${startLeft}vw + ${endLeftOffset}vw)`;
+                el.style.transform = `rotate(${(Math.random() * 720) - 360}deg) translateY(0)`;
+                // fade slightly at end
+                setTimeout(() => { el.style.opacity = '0.05'; }, 2600 + Math.random()*800);
+            }, 50 + i * 30);
+
+            // cleanup each piece after animation
+            setTimeout(() => {
+                try { container.removeChild(el); } catch (e) {}
+            }, 4200 + i * 30);
+        }
+
+        // remove container after all pieces cleaned
+        setTimeout(() => {
+            try { if (container.parentNode) container.parentNode.removeChild(container); } catch (e) {}
+        }, 5200 + count * 30);
+
+        // Play win sound once (safe-playback)
+        try {
+            const s = new Audio('src/textures/win-noise.mp3');
+            s.preload = 'auto';
+            try {
+                window.__audioRegistry = window.__audioRegistry || [];
+                if (!window.__audioRegistry.includes(s)) window.__audioRegistry.push(s);
+            } catch (e) {}
+            const p = s.play();
+            if (p && typeof p.then === 'function') p.catch(() => {});
+        } catch (e) {
+            // swallow
+        }
+    } catch (e) {
+        console.warn('[achievements] showConfettiAndPlaySound error', e);
+    }
 }
 
 function resetAchievements() {
@@ -502,11 +718,11 @@ export function registerDefaultAchievements() {
         { id: 'master_interactor', title: 'Sleuth', description: 'You investigated all interactive objects in the cabin.' },
         { id: 'clicked_boisvert', title: 'Hello, Room', description: 'You clicked on the entity.' },
         { id: 'visited_first_dlc', title: 'Where am I..?', description: 'You traveled to the first area of the DLC.' },
-        { id: 'clicked_easter', title: 'Easter Hunter', description: 'You found the hidden easter egg.' },
+        { id: 'clicked_easter', title: 'Created By Griffin Hampton.', description: 'You found the hidden easter egg in the backrooms.' },
         { id: 'game_start', title: 'Let the Hunt Begin', description:'You initiated the game with Room.'},
         { id: 'game_lost', title: 'You Died...', description: 'You lost the game with Room.' },
         { id: 'game_won', title: 'Nightmare Slain', description:'You won the game with Room.'},
-        { id: 'collected_all', title: 'Completionist', description: 'You collected every achievement.' },
+        { id: 'collected_all', title: 'Platinum', description: 'You collected every achievement.' },
     ];
     for (const a of defaults) achievementsMap.set(a.id, a);
     for (const a of extras) achievementsMap.set(a.id, a);
