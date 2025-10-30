@@ -218,49 +218,6 @@ export function setupBoisvertTeleporter(scene, camera, navigationPositions, cont
         } catch (e) {}
     }
 
-    // Unlock audio on first user gesture to satisfy browser autoplay policies.
-    // This will attempt to play the winter-wind audio and any audios in the
-    // global `window.__audioRegistry` once the user interacts (pointer/touch/keydown).
-    function unlockAudioOnFirstGesture() {
-        try {
-            if (typeof window === 'undefined' || window.__audioUnlocked) return;
-
-            const attempt = function tryPlay() {
-                try {
-                    const a = ensureWinterWindAudio();
-                    if (a) {
-                        try { a.play().catch(()=>{}); } catch (e) {}
-                    }
-
-                    // Try to play any audios the app registered earlier
-                    try {
-                        if (window.__audioRegistry && Array.isArray(window.__audioRegistry)) {
-                            window.__audioRegistry.forEach((el) => {
-                                try { if (el && typeof el.play === 'function') el.play().catch(()=>{}); } catch (e) {}
-                            });
-                        }
-                    } catch (e) {}
-
-                    window.__audioUnlocked = true;
-                } catch (e) {}
-
-                // Remove listeners after first attempt
-                try { document.removeEventListener('pointerdown', tryPlay); } catch (e) {}
-                try { document.removeEventListener('touchstart', tryPlay); } catch (e) {}
-                try { document.removeEventListener('keydown', tryPlay); } catch (e) {}
-            };
-
-            // Use passive listeners where appropriate and set once: true semantics
-            try { document.addEventListener('pointerdown', attempt, { once: true, passive: true }); } catch (e) { document.addEventListener('pointerdown', attempt); }
-            try { document.addEventListener('touchstart', attempt, { once: true, passive: true }); } catch (e) { document.addEventListener('touchstart', attempt); }
-            try { document.addEventListener('keydown', attempt, { once: true, passive: true }); } catch (e) { document.addEventListener('keydown', attempt); }
-        } catch (e) {}
-    }
-
-    // Start listening for the first gesture right away so the audio unlock
-    // will occur before the user clicks an orb.
-    try { unlockAudioOnFirstGesture(); } catch (e) {}
-
     function setWinterWindVolume(v) {
         try {
             const a = ensureWinterWindAudio();
