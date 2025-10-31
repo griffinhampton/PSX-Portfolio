@@ -353,7 +353,7 @@
         </div>
 
       <div id="achievementsPopup" class="about-popup" style="display: none;">
-        <div class="popup-card popup-card-scrollable draggable">
+    <div class="popup-card popup-card-scrollable draggable" style="position:relative;">
               <div class="popup-header" style="position:relative;">
                 <img src="src/textures/achievement-base-menu.png" alt="Achievements" style="width:32px;height:32px;object-fit:contain;"/>
                 <span class="popup-title">ACHIEVEMENTS</span>
@@ -362,6 +362,41 @@
           <div class="popup-body popup-body-scrollable" id="achievementsListContainer">
             <!-- Achievements will be injected here -->
           </div>
+
+          <!-- Scroll controls: top and bottom of the achievements scrollbar -->
+          <!-- Both buttons moved to bottom-right of the popup, stacked vertically -->
+          <button id="achievementsScrollUp" class="achievements-scroll-btn" aria-label="Scroll achievements up" title="Scroll up" style="position:absolute; right:12px; bottom:58px; width:36px; height:30px; background:#000; color:#fff; border:2px solid #fff; border-radius:4px; cursor:pointer; z-index:10002;">^</button>
+          <button id="achievementsScrollDown" class="achievements-scroll-btn" aria-label="Scroll achievements down" title="Scroll down" style="position:absolute; right:12px; bottom:18px; width:36px; height:30px; background:#000; color:#fff; border:2px solid #fff; border-radius:4px; cursor:pointer; z-index:10002;">˅</button>
+
+          <script>
+            (function(){
+              try {
+                const up = document.getElementById('achievementsScrollUp');
+                const down = document.getElementById('achievementsScrollDown');
+                const container = document.getElementById('achievementsListContainer');
+                if (!container) return;
+                const SCROLL_AMOUNT = 160;
+                if (up) up.addEventListener('click', function(e){
+                  try { container.scrollBy({ top: -SCROLL_AMOUNT, left:0, behavior: 'smooth' }); } catch (ee) {}
+                });
+                if (down) down.addEventListener('click', function(e){
+                  try { container.scrollBy({ top: SCROLL_AMOUNT, left:0, behavior: 'smooth' }); } catch (ee) {}
+                });
+                // Keep scroll buttons always visible in the popup
+                function updateScrollVisibility(){
+                  try {
+                    if (!up || !down) return;
+                    up.style.display = '';
+                    down.style.display = '';
+                  } catch (e) {}
+                }
+                // Ensure they remain visible even after content changes
+                try { container.addEventListener('scroll', updateScrollVisibility); } catch (e) {}
+                // initial visibility
+                setTimeout(updateScrollVisibility, 60);
+              } catch (e) { /* ignore */ }
+            })();
+          </script>
           <!-- Reset button removed per UX request -->
         </div>
       </div>
