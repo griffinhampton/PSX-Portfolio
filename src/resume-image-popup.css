@@ -25,6 +25,7 @@
   overflow-x: hidden;
   padding-left: 40px;
   padding-right: 40px;
+  touch-action: pan-y;
 }
 .resume-image-popup .popup-card {
   background: #f5f5dc;

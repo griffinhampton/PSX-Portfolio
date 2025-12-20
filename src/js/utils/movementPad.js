@@ -66,7 +66,13 @@ class MovementPad {
 
         this._onDocumentMouseUp = () => {
             this.mouseDown = false;
+            if (this._rafId) {
+                cancelAnimationFrame(this._rafId);
+                this._rafId = null;
+            }
+            this._pendingPos = null;
             this.resetHandlePosition();
+            this.sendEvent(0, 0, 0);
         };
         document.addEventListener('mouseup', this._onDocumentMouseUp);
 
@@ -92,7 +98,13 @@ class MovementPad {
             for (let i = 0; i < event.changedTouches.length; i++) {
                 if (event.changedTouches[i].identifier === this.activePointerId) {
                     this.activePointerId = null;
+                    if (this._rafId) {
+                        cancelAnimationFrame(this._rafId);
+                        this._rafId = null;
+                    }
+                    this._pendingPos = null;
                     this.resetHandlePosition();
+                    this.sendEvent(0, 0, 0);
                     break;
                 }
             }

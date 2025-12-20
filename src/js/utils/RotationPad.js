@@ -14,6 +14,8 @@ class RotationPad {
     // Separate mouse flag for desktop interactions
     mouseDown = false
     mouseStopped = false
+    _pendingPos = null
+    _rafId = null
 
     constructor(container) {
         this.container = container
@@ -64,18 +66,23 @@ class RotationPad {
         this.region.addEventListener('mousedown', (event) => {
             this.mouseDown = true
             this.handle.style.opacity = 1.0
-            this.update(event.pageX, event.pageY)
+            this._queueUpdate(event.pageX, event.pageY)
         })
 
         document.addEventListener('mouseup', () => {
             this.mouseDown = false
+            if (this._rafId) {
+                cancelAnimationFrame(this._rafId)
+                this._rafId = null
+            }
+            this._pendingPos = null
             this.resetHandlePosition()
         })
 
         document.addEventListener('mousemove', (event) => {
             if (!this.mouseDown)
                 return
-            this.update(event.pageX, event.pageY)
+            this._queueUpdate(event.pageX, event.pageY)
         })
 
         // Touch events — track specific touch identifier so two pads can be used simultaneously
@@ -87,15 +94,20 @@ class RotationPad {
             this.handle.style.opacity = 1.0
             // Prevent the page from scrolling while interacting
             if (event.cancelable) event.preventDefault()
-            this.update(t.pageX, t.pageY)
+            this._queueUpdate(t.pageX, t.pageY)
         }, { passive: false })
 
         let touchEnd = (event) => {
-            if (!this.activePointerId) return
+            if (this.activePointerId === null) return
             // If one of the ended/cancelled touches matches our active id, clear it
             for (let i = 0; i < event.changedTouches.length; i++) {
                 if (event.changedTouches[i].identifier === this.activePointerId) {
                     this.activePointerId = null
+                    if (this._rafId) {
+                        cancelAnimationFrame(this._rafId)
+                        this._rafId = null
+                    }
+                    this._pendingPos = null
                     this.resetHandlePosition()
                     break
                 }
@@ -116,10 +128,21 @@ class RotationPad {
             }
             if (!touch) return
             if (event.cancelable) event.preventDefault()
-            this.update(touch.pageX, touch.pageY)
+            this._queueUpdate(touch.pageX, touch.pageY)
         }, { passive: false })
 
         this.resetHandlePosition()
+    }
+
+    _queueUpdate(pageX, pageY) {
+        this._pendingPos = { x: pageX, y: pageY };
+        if (this._rafId) return;
+        this._rafId = requestAnimationFrame(() => {
+            const p = this._pendingPos;
+            this._pendingPos = null;
+            this._rafId = null;
+            if (p) this.update(p.x, p.y);
+        });
     }
 
     alignAndConfigPad(canvas){

@@ -461,6 +461,7 @@ h1, h2, h3, h4, h5, h6 {
   z-index: 10005; /* above rotation pad and settings panel */
   font-family: 'VT323', monospace !important;
   color: #ffffff !important;
+  touch-action: pan-y;
 }
 
 .more-menu .more-item {
@@ -520,6 +521,7 @@ h1, h2, h3, h4, h5, h6 {
   border: 3px solid #ffffff !important;
   font-family: 'VT323', monospace !important;
   color: #ffffff !important;
+  touch-action: pan-y;
 }
 
 /* LinkedIn Popup Card - Retro Paper Style */
@@ -598,6 +600,7 @@ body > canvas {
   font-family: 'VT323', monospace;
   transform: rotate(-1deg);
   position: relative;
+  touch-action: pan-y;
   animation: subtleFloat 3s ease-in-out infinite;
   image-rendering: pixelated;
   image-rendering: -moz-crisp-edges;
@@ -822,6 +825,7 @@ body > canvas {
   width: 320px;
   max-height: 50vh;
   overflow: auto;
+  touch-action: pan-y;
   background: rgba(20,20,20,0.95);
   color: #fff;
   border: 3px solid #fff;
@@ -959,6 +963,7 @@ body > canvas {
   overflow-x: hidden;
   max-height: 50vh;
   padding-right: 10px;
+  touch-action: pan-y;
   /* Custom scrollbar styling for retro look */
   scrollbar-width: thin;
   scrollbar-color: #000000 #f5f5dc;
